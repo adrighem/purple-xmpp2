@@ -25,12 +25,14 @@ extern const X2Ext *const X2_EXT_TEST_TABLE[];
 #else
 extern const X2Ext x2_ext_carbons;
 extern const X2Ext x2_ext_mam;
+extern const X2Ext x2_ext_correct;
 extern const X2Ext x2_ext_upload;
 /* ... one line per module */
 
 static const X2Ext *const x2_exts[] = {
 	&x2_ext_carbons,
 	&x2_ext_mam,
+	&x2_ext_correct,
 	&x2_ext_upload,
 	/* ... */
 	NULL

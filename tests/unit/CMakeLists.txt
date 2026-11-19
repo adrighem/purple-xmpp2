@@ -58,3 +58,21 @@ if(XMPP2_IDN)
     target_compile_definitions(test-carbons PRIVATE USE_IDN)
     target_link_libraries(test-carbons PRIVATE PkgConfig::LIBIDN)
 endif()
+
+x2_unit_test(replace)
+
+# The correction module inside the real pipeline, with stubbed delivery.
+x2_unit_test(correct
+    ${PROJECT_SOURCE_DIR}/src/ext/correct.c
+    ${PROJECT_SOURCE_DIR}/src/ext/ext.c
+    ${PROJECT_SOURCE_DIR}/src/ext/msgctx.c
+    ${PROJECT_SOURCE_DIR}/src/jutil.c)
+target_include_directories(test-correct PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(test-correct PRIVATE
+    PURPLE_PLUGINS X2_EXT_TEST_TABLE=x2_test_exts)
+target_compile_options(test-correct PRIVATE -Wno-unused-parameter)
+target_link_libraries(test-correct PRIVATE PkgConfig::LIBXML)
+if(XMPP2_IDN)
+    target_compile_definitions(test-correct PRIVATE USE_IDN)
+    target_link_libraries(test-correct PRIVATE PkgConfig::LIBIDN)
+endif()
