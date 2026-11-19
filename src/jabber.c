@@ -1499,6 +1499,7 @@ void jabber_close(PurpleConnection *gc)
 		jabber_sm_ack_send(js);
 		jabber_send_raw(js, "</stream:stream>", -1);
 	}
+	jabber_sm_close(js);
 
 	if (js->srv_query_data)
 		purple_srv_cancel(js->srv_query_data);

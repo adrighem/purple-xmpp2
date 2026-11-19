@@ -23,7 +23,7 @@ the server archive and shows it in the right conversation.
 | Everything the built-in XMPP plugin does | | Inherited (forked from Pidgin 2.14.14) |
 | Message archive catch-up | XEP-0313 | Planned (headline feature) |
 | Message carbons | XEP-0280 | Planned |
-| Stream management | XEP-0198 | Planned |
+| Stream management | XEP-0198 | Batched acks; unacked messages reported on connection loss (resumption planned) |
 | HTTP file upload | XEP-0363 | Planned |
 | Delivery receipts | XEP-0184 | Planned |
 | Chat markers | XEP-0333 | Planned |

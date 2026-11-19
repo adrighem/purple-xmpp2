@@ -283,7 +283,16 @@ or the harness calling `x2_migrate_run()` through a test command):
 - The clone's first connect displays no history (`initial=cursor-only`) and
   its logs land in the same `logs/jabber/<user>/` directory.
 
-## M9: stream management fixes
+## M9: stream management fixes (done)
+
+Status: implemented (ARCHITECTURE 7.8). Tests: `tests/unit/test_smstate.c`
+(wraparound, exact trimming, batching, bounded queue) and
+`tests/integration/test_sm.sh` (enable+resume parsed, 4 `<r/>` for 20
+messages, harness `drop` with one unacked message: notice shown, bob gets
+it exactly once, nothing resent). `<failed h>` trimming is unit tested and
+logged; Prosody cannot be made to send `<failed h>` on enable, so there is
+no integration case for it. Unacked messages are reported to the user
+rather than resent (tech lead decision).
 
 Acceptance:
 - Peer `streamfeatures`-style check plus debug log: `<enable resume='true'/>`

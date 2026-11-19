@@ -74,7 +74,8 @@ set(XMPP2_SOURCES
 add_library(x2core STATIC
     src/core/dedup.c
     src/core/forward.c
-    src/core/sid.c)
+    src/core/sid.c
+    src/core/smstate.c)
 set_target_properties(x2core PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     C_VISIBILITY_PRESET hidden)
