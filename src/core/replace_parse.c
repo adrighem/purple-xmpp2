@@ -49,7 +49,7 @@ x2_replace_bare(const char *jid)
 
 char *
 x2_replace_sender(const xmlnode *message, const char *from,
-                  gboolean groupchat)
+                  gboolean groupchat, gboolean trust_occupant_id)
 {
 	xmlnode *occ;
 	const char *id;
@@ -60,6 +60,8 @@ x2_replace_sender(const xmlnode *message, const char *from,
 		return NULL;
 	if (!groupchat)
 		return x2_replace_bare(from);
+	if (!trust_occupant_id)
+		return g_strdup(from);
 
 	occ = xmlnode_get_child_with_namespace(message, "occupant-id",
 	                                       X2_NS_OCCUPANT_ID);
@@ -70,12 +72,13 @@ x2_replace_sender(const xmlnode *message, const char *from,
 }
 
 gboolean
-x2_replace_mark_body(xmlnode *message)
+x2_replace_mark_body(xmlnode *message, const char *marker)
 {
 	xmlnode *body, *html;
 	char *text, *ns, *marked;
 
 	g_return_val_if_fail(message != NULL, FALSE);
+	g_return_val_if_fail(marker != NULL, FALSE);
 
 	body = xmlnode_get_child(message, "body");
 	text = body ? xmlnode_get_data(body) : NULL;
@@ -90,7 +93,7 @@ x2_replace_mark_body(xmlnode *message)
 	body = xmlnode_new_child(message, "body");
 	if (ns != NULL)
 		xmlnode_set_namespace(body, ns);
-	marked = g_strconcat(X2_REPLACE_MARKER, text, NULL);
+	marked = g_strconcat(marker, text, NULL);
 	xmlnode_insert_data(body, marked, -1);
 
 	while ((html = xmlnode_get_child_with_namespace(message, "html",

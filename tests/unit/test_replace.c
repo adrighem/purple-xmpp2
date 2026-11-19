@@ -67,20 +67,24 @@ test_sender_identity(void)
 		" id='O1'/></message>");
 	char *s;
 
-	s = x2_replace_sender(plain, "bob@x/phone", FALSE);
+	s = x2_replace_sender(plain, "bob@x/phone", FALSE, FALSE);
 	g_assert_cmpstr(s, ==, "bob@x");
 	g_free(s);
-	s = x2_replace_sender(plain, "room@c/bob", TRUE);
+	s = x2_replace_sender(plain, "room@c/bob", TRUE, TRUE);
 	g_assert_cmpstr(s, ==, "room@c/bob");
 	g_free(s);
-	s = x2_replace_sender(occ, "room@c/bob", TRUE);
+	s = x2_replace_sender(occ, "room@c/bob", TRUE, TRUE);
 	g_assert_cmpstr(s, ==, "occ:O1");
 	g_free(s);
+	/* a room that does not advertise occupant-id may not be believed */
+	s = x2_replace_sender(occ, "room@c/bob", TRUE, FALSE);
+	g_assert_cmpstr(s, ==, "room@c/bob");
+	g_free(s);
 	/* an occupant-id means nothing outside a room */
-	s = x2_replace_sender(occ, "bob@x/r", FALSE);
+	s = x2_replace_sender(occ, "bob@x/r", FALSE, TRUE);
 	g_assert_cmpstr(s, ==, "bob@x");
 	g_free(s);
-	g_assert_null(x2_replace_sender(plain, NULL, FALSE));
+	g_assert_null(x2_replace_sender(plain, NULL, FALSE, FALSE));
 	xmlnode_free(plain);
 	xmlnode_free(occ);
 }
@@ -95,7 +99,7 @@ test_mark_body(void)
 	xmlnode *body;
 	char *t;
 
-	g_assert_true(x2_replace_mark_body(m));
+	g_assert_true(x2_replace_mark_body(m, X2_REPLACE_MARKER));
 	body = xmlnode_get_child(m, "body");
 	g_assert_nonnull(body);
 	g_assert_cmpstr(xmlnode_get_namespace(body), ==, "jabber:client");
@@ -112,11 +116,11 @@ test_mark_body_needs_body(void)
 {
 	xmlnode *m = parse(MSG_OPEN "<body></body></message>");
 
-	g_assert_false(x2_replace_mark_body(m));
+	g_assert_false(x2_replace_mark_body(m, X2_REPLACE_MARKER));
 	xmlnode_free(m);
 	m = parse(MSG_OPEN "<active xmlns='http://jabber.org/protocol/chatstates'/>"
 		"</message>");
-	g_assert_false(x2_replace_mark_body(m));
+	g_assert_false(x2_replace_mark_body(m, X2_REPLACE_MARKER));
 	xmlnode_free(m);
 }
 

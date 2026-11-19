@@ -97,11 +97,19 @@ struct _X2MamState {
 #define X2_MAM_ROOM_MAM      (1 << 0)
 #define X2_MAM_ROOM_EXTENDED (1 << 1)
 #define X2_MAM_ROOM_KNOWN    (1 << 2)  /* answered, even without MAM */
+#define X2_MAM_ROOM_OCCUPANT_ID (1 << 3)  /* advertises urn:xmpp:occupant-id:0 */
 
 /** The module (registry entry). */
 extern const X2Ext x2_ext_mam;
 
 X2MamState *x2_mam_state(JabberStream *js);
+
+/**
+ * TRUE if the disco#info of @a room (cached by mam_muc.c when we joined it)
+ * advertises urn:xmpp:occupant-id:0, i.e. the room stamps and strips
+ * <occupant-id/>.  FALSE for an unknown room or without MAM state.
+ */
+gboolean x2_mam_room_has_occupant_id(JabberStream *js, const char *room);
 
 /* mam.c */
 /** TRUE if @a key is in the dedup set or the archive's persisted ring. */
@@ -131,6 +139,11 @@ void x2_mam_archive_free(X2MamArchive *a);
 void x2_mam_sync_maybe_start(X2MamState *st);
 /** Enters SYNCING and arms the watchdog (forgets an earlier catch-up). */
 void x2_mam_sync_begin(X2MamArchive *a);
+/**
+ * Results a page of a query of this @a kind may hold: the RSM max we asked
+ * for.  More than that cannot come from an honest archive.
+ */
+guint x2_mam_page_limit(const X2MamArchive *a, X2MamQueryKind kind);
 /** Restarts the watchdog after a result. */
 void x2_mam_sync_kick(X2MamArchive *a);
 /** Sends one query of @a a (to the room for a room archive). */
@@ -139,11 +152,6 @@ void x2_mam_sync_query(X2MamArchive *a, X2MamQueryKind kind,
 /**
  * Ends the catch-up: LIVE, then the queue is delivered in arrival order.
  * @param complete  FALSE after an error, the watchdog or teardown.
-/**
- * Results a page of a query of this @a kind may hold: the RSM max we asked
- * for.  More than that cannot come from an honest archive.
- */
-guint x2_mam_page_limit(const X2MamArchive *a, X2MamQueryKind kind);
  * @param notice    Optional system line: for each conversation in the queue
  *                  (account archive), or once into the room.
  */

@@ -37,6 +37,14 @@ jabber_message_deliver(JabberStream *js, X2Msg *ctx)
 	delivered.body = xmlnode_get_data(xmlnode_get_child(ctx->msg, "body"));
 }
 
+static gboolean room_has_occupant_id;
+
+gboolean
+x2_mam_room_has_occupant_id(JabberStream *js, const char *room)
+{
+	return room_has_occupant_id;
+}
+
 JabberChat *
 jabber_chat_find(JabberStream *js, const char *room, const char *server)
 {
@@ -76,6 +84,7 @@ setup(Fixture *f, gconstpointer data)
 	f->js->user = jabber_id_new(ME "/desk");
 	x2_ext_stream_new(f->js);
 	memset(&delivered, 0, sizeof(delivered));
+	room_has_occupant_id = TRUE;
 }
 
 static void
@@ -171,6 +180,19 @@ test_room_occupant_id_survives_nick_change(Fixture *f, gconstpointer data)
 }
 
 static void
+test_room_occupant_id_needs_room_support(Fixture *f, gconstpointer data)
+{
+	/* the room does not advertise urn:xmpp:occupant-id:0: any occupant
+	 * could claim bob's id, so it is ignored and the nick decides */
+	room_has_occupant_id = FALSE;
+	receive(f, GROUP("bob", "g1", OCC("O1"), "teh"));
+	receive(f, GROUP("mallory", "g2", REPLACE("g1") OCC("O1"), "evil"));
+	g_assert_cmpstr(delivered.body, ==, "evil");
+	receive(f, GROUP("bob", "g3", REPLACE("g1") OCC("O9"), "the"));
+	g_assert_cmpstr(delivered.body, ==, X2_REPLACE_MARKER "the");
+}
+
+static void
 test_xhtml_dropped_so_marker_shows(Fixture *f, gconstpointer data)
 {
 	receive(f, CHAT("bob@localhost/p", "m1", "", "a"));
@@ -233,6 +255,7 @@ main(int argc, char **argv)
 	T("unknown-original", test_unknown_original_not_marked);
 	T("room-nick", test_room_same_nick_only);
 	T("room-occupant-id", test_room_occupant_id_survives_nick_change);
+	T("room-occupant-id-unadvertised", test_room_occupant_id_needs_room_support);
 	T("xhtml", test_xhtml_dropped_so_marker_shows);
 	T("outbound", test_outbound_tracks_last_sent_and_pending);
 	T("outbound-no-body", test_outbound_without_body_ignored);

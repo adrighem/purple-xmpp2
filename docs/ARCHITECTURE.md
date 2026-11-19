@@ -581,7 +581,10 @@ with a body is recorded in a bounded log (2048 ids per stream, oldest
 dropped first) as (conversation `peer`, id) -> author, for `id`,
 `origin-id` and the trusted `stanza-id`. The first author of an id stands.
 The author is the bare JID in 1:1 and, in a room, the XEP-0421 occupant-id
-when present, else the full JID (room/nick).
+when present and the room advertises `urn:xmpp:occupant-id:0` in its
+`disco#info` (cached by `mam_muc.c`, `x2_mam_room_has_occupant_id()`: a room
+that does not advertise it does not strip forged ids), else the full JID
+(room/nick).
 
 Incoming `<replace id=X>` with a body is accepted only if X was recorded in
 the same conversation from the same author. An accepted correction is
