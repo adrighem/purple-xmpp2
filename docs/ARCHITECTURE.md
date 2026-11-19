@@ -828,8 +828,10 @@ main loop with the accounts and, in Pidgin, the buddy list window present.
   result with `purple_notify_info()`, and say so when there is nothing to
   copy.
 - Clone: username (JID and resource), saved password (only if the original
-  remembers it; never logged), alias, user info, buddy icon path, check-mail
-  flag, proxy info, and each setting of `x2_migrate_map_options()`: the
+  remembers it; never logged), alias, user info, buddy icon path, the
+  account avatar (`purple_buddy_icons_find_account_icon(orig)` and
+  `purple_buddy_icons_set_account_icon(clone, copy)`, so the clone publishes
+  the same picture), check-mail flag, proxy info, and each setting of `x2_migrate_map_options()`: the
   options of the loaded prpl-jabber (`protocol_options`) that xmpp2 declares
   under the same key with the same kind (string or list, int, bool). A value
   a list option does not offer is skipped. libpurple cannot tell "unset" from

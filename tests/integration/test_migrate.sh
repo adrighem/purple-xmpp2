@@ -16,6 +16,10 @@ source "$HERE/lib.sh"
 test_init migrate
 
 UI=xmpp2harness
+# a 1x1 PNG: the cached avatar of the original account alice
+base64 -d >"$WORK/avatar.png" <<'PNG'
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
+PNG
 # the hook that offers in any UI exists only in -DXMPP2_TEST_HOOKS=ON builds
 ANY_UI=(--libpref b:/plugins/prpl/xmpp2/migration_offer_any_ui=1)
 
@@ -24,7 +28,9 @@ ANY_UI=(--libpref b:/plugins/prpl/xmpp2/migration_offer_any_ui=1)
 # proxy), a buddy list with one group per use, and an old log of alice.
 seed() {
 	local dir="$1"
-	mkdir -p "$dir"
+	mkdir -p "$dir/icons"
+	# a 1x1 PNG: the cached avatar of the original
+	cp "$WORK/avatar.png" "$dir/icons/orig-avatar.png"
 	cat >"$dir/accounts.xml" <<XML
 <?xml version='1.0' encoding='UTF-8' ?>
 
@@ -35,6 +41,8 @@ seed() {
 		<password>$XMPP_PASSWORD</password>
 		<alias>Ally</alias>
 		<settings>
+			<setting name='buddy_icon' type='string'>orig-avatar.png</setting>
+			<setting name='buddy_icon_timestamp' type='int'>1700000000</setting>
 			<setting name='connection_security' type='string'>opportunistic_tls</setting>
 			<setting name='auth_plain_in_clear' type='bool'>1</setting>
 			<setting name='port' type='int'>$XMPP_C2S_PORT</setting>
@@ -213,6 +221,12 @@ grep -c '^ACCT' "$WORK/acc.dump" | grep -qx 5 || fail "want 5 accounts"
 has "$WORK/acc.dump" "ACCT prpl-xmpp2 alice@localhost/laptop enabled=1 pw=$XMPP_PASSWORD alias=Ally"
 has "$WORK/acc.dump" "ACCT prpl-jabber alice@localhost/laptop enabled=0 pw=$XMPP_PASSWORD alias=Ally"
 sed -n '/^ACCT prpl-xmpp2 alice/,/^ACCT/p' "$WORK/acc.dump" >"$WORK/alice.clone"
+# the avatar: a new file in the icon cache, same bytes as the original's
+grep -q "^  set buddy_icon=[0-9a-f]*\.png$" "$WORK/alice.clone" ||
+	{ cat "$WORK/alice.clone" >&2; fail "clone has no avatar"; }
+CLONE_ICON="$(sed -n 's/^  set buddy_icon=//p' "$WORK/alice.clone")"
+cmp "$HUSERDIR/icons/$CLONE_ICON" "$WORK/avatar.png" ||
+	fail "clone avatar differs from the original"
 has "$WORK/alice.clone" "  set connection_security=opportunistic_tls"
 has "$WORK/alice.clone" "  set auth_plain_in_clear=1"
 has "$WORK/alice.clone" "  set port=$XMPP_C2S_PORT"
