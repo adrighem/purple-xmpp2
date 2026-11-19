@@ -37,6 +37,13 @@ void jabber_sm_ack_send(JabberStream *js);
 void jabber_sm_close(JabberStream *js);
 
 void jabber_sm_outbound(JabberStream *js, xmlnode *packet);
+
+/*
+ * Counts the stanzas in raw XML about to be sent (XML console).  Returns
+ * FALSE, counting nothing, if stream management is on and @a buf is not a
+ * sequence of complete elements: the caller must not send it then.
+ */
+gboolean jabber_sm_outbound_raw(JabberStream *js, const char *buf, int len);
 void jabber_sm_inbound(JabberStream *js, xmlnode *packet);
 
 #endif /* PURPLE_JABBER_STREAM_MANAGEMENT_H */

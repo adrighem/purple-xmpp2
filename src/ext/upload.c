@@ -35,6 +35,16 @@ upload_stream_new(JabberStream *js)
 	x2_ext_set_priv(js, &x2_ext_upload, g_new0(X2UploadState, 1));
 }
 
+/*
+ * Transfers hold slot IQ callbacks and PUT fetches: cancel them while
+ * js->iq_callbacks still exists (stream_free runs after it is destroyed).
+ */
+static void
+upload_stream_closing(JabberStream *js)
+{
+	x2_upload_xfer_cancel_all(js);
+}
+
 static void
 upload_stream_free(JabberStream *js)
 {
@@ -42,7 +52,11 @@ upload_stream_free(JabberStream *js)
 
 	if (st == NULL)
 		return;
-	x2_upload_xfer_cancel_all(js);
+	if (st->xfers != NULL) {
+		g_critical("xmpp2: %u upload(s) still alive at stream_free",
+		           g_list_length(st->xfers));
+		g_list_free(st->xfers);
+	}
 	g_free(st->service);
 	g_free(st);
 	x2_ext_set_priv(js, &x2_ext_upload, NULL);
@@ -79,6 +93,7 @@ const X2Ext x2_ext_upload = {
 	.account_options = upload_account_options,
 	.stream_new = upload_stream_new,
 	.stream_free = upload_stream_free,
+	.stream_closing = upload_stream_closing,
 	.server_info = upload_server_info,
 };
 

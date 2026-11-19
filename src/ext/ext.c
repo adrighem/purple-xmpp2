@@ -7,7 +7,9 @@
  * Adding a feature: write ext/<feature>.c with a `const X2Ext x2_ext_<feature>`,
  * add its source to CMakeLists.txt, and append an extern declaration and one
  * table entry below.  The table order is the order of the inbound chain
- * (ARCHITECTURE 6): carbons, mam, receipts, markers, correction.  Per-stream
+ * (ARCHITECTURE 6): carbons, receipts-answer, mam, correction, upload,
+ * receipts, markers.  receipts-answer must stay before mam (see
+ * receipts.c).  Per-stream
  * module state goes through x2_ext_get_priv(), not through shared headers.
  */
 #include "xmpp2_internal.h"
@@ -28,12 +30,14 @@ extern const X2Ext x2_ext_mam;
 extern const X2Ext x2_ext_correct;
 extern const X2Ext x2_ext_upload;
 extern const X2Ext x2_ext_receipts;
+extern const X2Ext x2_ext_receipts_answer;
 extern const X2Ext x2_ext_markers;
 extern const X2Ext x2_ext_migrate;
 /* ... one line per module */
 
 static const X2Ext *const x2_exts[] = {
 	&x2_ext_carbons,
+	&x2_ext_receipts_answer,
 	&x2_ext_mam,
 	&x2_ext_correct,
 	&x2_ext_upload,

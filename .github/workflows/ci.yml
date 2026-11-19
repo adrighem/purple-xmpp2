@@ -61,7 +61,7 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON
+            -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON
 
       - name: Build
         run: cmake --build build

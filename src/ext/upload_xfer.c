@@ -35,6 +35,9 @@
 
 #define DBG "xmpp2-upload"
 
+/* Largest PUT response we read (status line, headers, short body) */
+#define X2_UPLOAD_RESPONSE_MAX (64 * 1024)
+
 typedef struct {
 	JabberStream *js;
 	PurpleXfer *xfer;
@@ -43,8 +46,6 @@ typedef struct {
 	const char *mime;
 	char *iq_id;                    /* slot request in flight */
 	X2UploadSlot *slot;
-	char *request;                  /* PUT head and body */
-	gsize request_len;
 	PurpleUtilFetchUrlData *fetch;  /* PUT in flight */
 	gboolean starting;              /* inside the fetch call, see put_done() */
 	gboolean failed_early;
@@ -70,7 +71,6 @@ ux_free(PurpleXfer *xfer)
 	x2_upload_slot_free(ux->slot);
 	g_free(ux->iq_id);
 	g_free(ux->filename);
-	g_free(ux->request);
 	g_free(ux->early_error);
 	g_free(ux);
 }
@@ -136,11 +136,8 @@ ux_finish(PurpleXfer *xfer)
 static void
 put_result(PurpleXfer *xfer, const char *response, const char *error)
 {
-	X2UploadXfer *ux = xfer->data;
 	int code = 0;
 
-	g_free(ux->request);
-	ux->request = NULL;
 	if (error != NULL) {
 		ux_fail(xfer, _("could not send the file to the server: %s"), error);
 		return;
@@ -149,11 +146,19 @@ put_result(PurpleXfer *xfer, const char *response, const char *error)
 		ux_fail(xfer, _("the upload server sent an unreadable response"));
 		return;
 	}
-	if (code < 200 || code > 299) {
+	/*
+	 * Only 201 Created is success (XEP-0363).  libpurple follows any
+	 * Location header with a GET, possibly over plain http, and that GET
+	 * would answer 200 with somebody's content: a redirect is a failure.
+	 */
+	if (code != 201) {
 		if (code == 401 || code == 403)
 			ux_fail(xfer, _("the upload server refused the file (HTTP %d)"), code);
 		else if (code == 413)
 			ux_fail(xfer, _("the file is too large for the upload server (HTTP 413)"));
+		else if (code >= 300 && code <= 399)
+			ux_fail(xfer, _("the upload server redirected the upload "
+				"(HTTP %d), which is not supported"), code);
 		else
 			ux_fail(xfer, _("the upload server answered HTTP %d"), code);
 		return;
@@ -182,9 +187,12 @@ put_done(PurpleUtilFetchUrlData *url_data, gpointer data, const gchar *text,
 	put_result(xfer, text, error_message);
 }
 
-/* Reads head and file into one buffer: one copy of the file in memory. */
+/*
+ * Reads head and file into one buffer (*out, *out_len): one copy of the file
+ * in memory until the fetch call copies it.
+ */
 static gboolean
-build_request(PurpleXfer *xfer, GError **error)
+build_request(PurpleXfer *xfer, char **out, gsize *out_len, GError **error)
 {
 	X2UploadXfer *ux = xfer->data;
 	guint64 size = purple_xfer_get_size(xfer);
@@ -219,8 +227,8 @@ build_request(PurpleXfer *xfer, GError **error)
 		return FALSE;
 	}
 	fclose(fp);
-	ux->request = buf;
-	ux->request_len = hlen + size;
+	*out = buf;
+	*out_len = hlen + size;
 	return TRUE;
 }
 
@@ -229,8 +237,10 @@ start_put(PurpleXfer *xfer)
 {
 	X2UploadXfer *ux = xfer->data;
 	GError *err = NULL;
+	char *request;
+	gsize request_len;
 
-	if (!build_request(xfer, &err)) {
+	if (!build_request(xfer, &request, &request_len, &err)) {
 		ux_fail(xfer, "%s", err->message);
 		g_clear_error(&err);
 		return;
@@ -239,12 +249,18 @@ start_put(PurpleXfer *xfer)
 		(guint64)purple_xfer_get_size(xfer), ux->slot->put_url.host,
 		ux->slot->put_url.https ? "https" : "http");
 
+	/*
+	 * max_len bounds the response.  It must be > 0: with -1 libpurple logs
+	 * the full (signed) PUT URL at error level.  libpurple copies the
+	 * request, so ours goes at once (halves peak memory).
+	 */
 	ux->starting = TRUE;
 	ux->fetch = purple_util_fetch_url_request_data_len_with_account(
 		purple_xfer_get_account(xfer), ux->slot->put, TRUE,
-		"purple-xmpp2/" XMPP2_VERSION, TRUE, ux->request, ux->request_len,
-		TRUE, -1, put_done, xfer);
+		"purple-xmpp2/" XMPP2_VERSION, TRUE, request, request_len,
+		TRUE, X2_UPLOAD_RESPONSE_MAX, put_done, xfer);
 	ux->starting = FALSE;
+	g_free(request);
 
 	if (ux->failed_early) {
 		ux->fetch = NULL;

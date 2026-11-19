@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 purple-xmpp2 contributors
 #
-# M9 stream management (XEP-0198): enable with resume, batched acks, no
-# resend on a fresh session after a TCP drop, unacked messages reported.
+# M9 stream management (XEP-0198): plain enable (no resume until M10),
+# batched acks, XML console stanzas counted, no resend on a fresh session
+# after a TCP drop, unacked messages reported on a drop and on sign-off.
 # Asserts on xmpp2-sm debug lines, so it needs PRPL=prpl-xmpp2.
 set -euo pipefail
 
@@ -18,7 +19,7 @@ test_init sm
 
 TAG="$$-$RANDOM"
 
-# 1. The server offers SM; we enable it with resume and parse <enabled/>.
+# 1. The server offers SM; we enable it without resume and parse <enabled/>.
 run_peer bob --do streamfeatures | grep -q "PEER-STREAM stream_management" ||
 	fail "server does not offer stream management"
 
@@ -30,8 +31,8 @@ BOB_PID=$PEER_PID
 {
 	cat <<SCRIPT
 connect 30
-expect-debug cat=xmpp2-sm text=enable requested (resume=true)
-expect-debug cat=xmpp2-sm text=enabled id=
+expect-debug cat=xmpp2-sm text=enable requested (no resume)
+expect-debug cat=xmpp2-sm text=resume=0
 sleep 3
 clear-debug
 SCRIPT
@@ -45,6 +46,17 @@ sleep 3
 dump-debug
 clear-debug
 SCRIPT
+	# 2b. Raw XML (the XML console) is counted: two stanzas in one write,
+	# then an ack that would be "too high" if they were not.  An incomplete
+	# element is refused while SM is on.
+	cat <<SCRIPT
+raw <message to='bob@localhost' type='chat' id='raw-$TAG'><body>raw-$TAG</body></message><iq type='get' id='rawping-$TAG' to='localhost'><ping xmlns='urn:xmpp:ping'/></iq>
+expect-debug cat=xmpp2-sm timeout=10 text=, 0 unacked
+no-debug cat=xmpp2-sm timeout=1 text=but only
+raw-refused <message to='bob@localhost'>
+expect-debug cat=xmpp2-sm text=raw XML refused
+clear-debug
+SCRIPT
 	# 3. Drop TCP with one message unacked (the idle <r/> is 2 s away).
 	cat <<SCRIPT
 send bob@localhost drop-$TAG
@@ -56,7 +68,10 @@ expect-debug cat=xmpp2-sm text=0 stale stanzas dropped, nothing resent
 expect-debug cat=xmpp2-sm text=enabled id=
 sleep 4
 no-debug cat=xmpp2-sm timeout=1 text=failed
+send bob@localhost bye-$TAG
 disconnect
+expect-ev kind=system timeout=5 text=it may not have been delivered: bye-$TAG
+expect-debug cat=xmpp2-sm text=signed off with 1 unacked stanzas (1 messages reported
 SCRIPT
 } >"$WORK/alice.in"
 run_harness alice <"$WORK/alice.in"
@@ -71,4 +86,4 @@ grep -q "^DBG xmpp2-sm: ack h=.*, 0 unacked" "$H_OUT" ||
 wait "$BOB_PID" || { cat "$WORK/bob.log"; fail "bob peer failed"; }
 grep -q "PEER recv chat .*: burst-$TAG-20" "$WORK/bob.log" || fail "bob missed the burst"
 grep -q "PEER count <body>drop-$TAG</body> = 1" "$WORK/bob.log" || fail "bob did not get drop-$TAG exactly once"
-pass "SM enable+resume parsed, batched acks ($requests <r/>), drop reported, no resend"
+pass "SM plain enable, batched acks ($requests <r/>), raw XML counted, drop and sign-off reported, no resend"

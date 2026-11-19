@@ -40,6 +40,12 @@
  *   correct JID TEXT          shorthand for: cmd JID correct TEXT
  *   upload JID PATH [SECS]    send a file, wait for xfer completion (30)
  *   upload-fail JID PATH [SECS]  same, but the xfer must be cancelled
+ *   upload-drop JID PATH [SECS]  start an upload and drop (as "drop") in
+ *                             the same main loop turn, so the slot IQ is in
+ *                             flight; the xfer must be cancelled
+ *   raw XML                   send XML as is through the prpl's send_raw
+ *                             (the XML console path); FAIL if refused
+ *   raw-refused XML           same, but send_raw must refuse it
  *   focus JID                 unseen-count := 0 and emit conversation-updated
  *                             (PURPLE_CONV_UPDATE_UNSEEN), like a focused window
  *   action TEXT               run the prpl action of the (connected) account
@@ -1138,6 +1144,25 @@ static void do_command(char *line)
 		m = g_strdup_printf("%d socket(s)", n);
 		continue_ok("drop", m);
 		g_free(m);
+	} else if (!strcmp(cmd, "raw") || !strcmp(cmd, "raw-refused")) {
+		PurpleConnection *gc = purple_account_get_connection(account);
+		PurplePluginProtocolInfo *info;
+		gboolean want_refused = !strcmp(cmd, "raw-refused");
+		gboolean refused;
+
+		if (!*arg || !need_online(cmd))
+			return;
+		info = PURPLE_PLUGIN_PROTOCOL_INFO(purple_connection_get_prpl(gc));
+		if (info->send_raw == NULL) {
+			fail_now(cmd, "the prpl has no send_raw");
+			return;
+		}
+		refused = info->send_raw(gc, arg, strlen(arg)) < 0;
+		if (refused != want_refused) {
+			fail_now(cmd, refused ? "refused" : "accepted");
+			return;
+		}
+		continue_ok(cmd, arg);
 	} else if (!strcmp(cmd, "sleep")) {
 		arm(P_SLEEP, "sleep", atof(arg));
 	} else if (!strcmp(cmd, "quit")) {
@@ -1236,7 +1261,8 @@ static void do_command(char *line)
 		purple_conversation_set_data(c, "unseen-count", GINT_TO_POINTER(0));
 		purple_conversation_update(c, PURPLE_CONV_UPDATE_UNSEEN);
 		continue_ok("focus", arg);
-	} else if (!strcmp(cmd, "upload") || !strcmp(cmd, "upload-fail")) {
+	} else if (!strcmp(cmd, "upload") || !strcmp(cmd, "upload-fail") ||
+	           !strcmp(cmd, "upload-drop")) {
 		char *rest = split_word(arg);
 		char *sp = strchr(rest, ' ');
 
@@ -1247,9 +1273,11 @@ static void do_command(char *line)
 		}
 		if (!*rest || !need_online(cmd))
 			return;
-		pending_fail_ok = !strcmp(cmd, "upload-fail");
+		pending_fail_ok = strcmp(cmd, "upload") != 0;
 		arm(P_XFER, cmd, secs);
 		serv_send_file(purple_account_get_connection(account), arg, rest);
+		if (!strcmp(cmd, "upload-drop") && drop_c2s_sockets() == 0)
+			resume(FALSE, "no socket connected to the c2s port");
 	} else if (!strcmp(cmd, "logcount")) {
 		char *text = split_word(arg);
 		char *sp = strrchr(text, ' ');

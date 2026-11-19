@@ -306,6 +306,10 @@ Order of the inbound chain (registry order matters and is fixed):
    for `sent` the inner `from` bare JID equals ours, for `received` the inner
    `to` bare JID equals ours (else drop and log: forged carbon). Unwrap, set
    `src=CARBON`, `dir`.
+   Then `receipts-answer` (second table entry of `ext/receipts.c`): answer a
+   receipt request of a live message (rule in 7.4) before `mam` can queue
+   it, or drop it as the duplicate of an archive result shown during the
+   catch-up (it would never be answered after that).
 2. `mam`: if it carries `urn:xmpp:mam:2` `<result>`, verify outer `from` is
    the archive we queried (own bare JID or the room) and `queryid` matches
    an active query (else drop). Unwrap `<forwarded>` and check the inner
@@ -321,9 +325,9 @@ Order of the inbound chain (registry order matters and is fixed):
    return `X2_DEFERRED` (ownership: see above). The
    queue is flushed to the UI (with dedup) on `LIVE`, on watchdog expiry and
    on stream teardown: a duplicate beats a lost message.
-4. `receipts`, `markers`, `correction`: consume pure control messages
-   (`<received/>`, `<displayed/>` without body), answer receipt requests,
-   rewrite corrections.
+4. `correction`, `upload`, `receipts`, `markers` (table order): rewrite
+   corrections, consume pure control messages (`<received/>`,
+   `<displayed/>` without body).
 5. Deliver: `msgctx` calls the upstream handlers in `message.c` with the
    context. `dir=OUT` writes into the IM conversation for `peer` with
    `PURPLE_MESSAGE_SEND | PURPLE_MESSAGE_REMOTE_SEND`; `dir=IN` keeps the
@@ -521,7 +525,9 @@ Implemented in `ext/receipts.c` (`core/receipt_parse.c`). Outgoing:
 `<request/>` on 1:1 messages with a body, unless the recipient resource is
 known from caps and lacks `urn:xmpp:receipts`, or is a room occupant
 (unknown caps count as supported); the (bare JID, id) pair is remembered in a
-256 entry set. Incoming request: reply
+256 entry set. Incoming request (answered by the `receipts-answer` entry,
+which runs before `mam`, so a live message queued or deduplicated during
+the MAM catch-up is still answered, on arrival): reply
 `<received id=.../>` to the full JID only when `src=LIVE`, `type!='groupchat'`
 and the sender is in the roster with presence subscription (no presence
 leak to strangers; same as Gajim). Incoming `<received/>`: emit the purple
@@ -615,7 +621,11 @@ request, and an empty file is refused. Then:
    a hand-built binary-safe request (`Host`, `User-Agent`, `Content-Type`,
    `Content-Length`, slot headers, `Connection: close`): honours the account
    proxy, https through the purple SSL plugin (default port 443, checked),
-   `include_headers=TRUE` to read the status line; any 2xx is success.
+   `include_headers=TRUE` to read the status line, `max_len` 64 KiB for the
+   response. Only `201 Created` is success; anything else, including a
+   redirect, is a failure: libpurple follows any `Location` header with a
+   GET (possibly over plain http) and that GET could answer 200. A server
+   that sends `Location` even with its 201 is therefore not supported.
 4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
    `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
    (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1
@@ -624,22 +634,28 @@ request, and an empty file is refused. Then:
 Errors reach the user through `purple_xfer_error()` ("File upload of X
 failed: reason") and cancel the transfer; the same text is logged under
 `xmpp2-upload`. Logging: never the slot URLs (signed tokens) or headers; the
-only URL data in our log is the PUT host and scheme. libpurple itself logs
-the fetched URL at debug level under `util`, which we cannot suppress with
-this API.
+only URL data in our log is the PUT host and scheme. `max_len` must be
+positive: with -1 libpurple logs the full signed PUT URL at error level
+("Defaulting max download from URL"). libpurple still logs the URL and the
+request head under `util` when unsafe debugging is on (and the target of a
+redirect, which then fails), which we cannot suppress with this API.
 
 Memory: v1 reads the file into one buffer (request head plus body), bounded
-by `max-file-size` and the 100 MiB cap, and libpurple may hold a copy of the
-request while it sends it, so peak use is up to about twice the file size.
+by `max-file-size` and the 100 MiB cap. libpurple copies the request, and
+our buffer is freed as soon as the fetch call returns, so peak use is about
+twice the file size for that moment only, once the file size afterwards.
 The transfer is blocking only for the file read; the PUT is asynchronous.
 Streaming from disk and progress are later. In-flight uploads live in the
 module's per-stream state (not in `js->file_transfers`, whose entries the SI
-code casts to its own struct) and are cancelled when the stream closes.
+code casts to its own struct) and are cancelled in the `stream_closing`
+hook, while `js->iq_callbacks` still exists (a slot IQ callback is removed
+on cancel); `stream_free` only checks that none is left.
 Receiving needs nothing new: `jm_body_with_oob()` already shows the URL.
 
 ### 7.8 Stream management (XEP-0198), audit result
 
-Upstream `stream_management.c` implements counting and acks only. Findings:
+Upstream `stream_management.c` implements counting and acks only. Findings
+(upstream):
 
 1. No resumption: sends `<enable/>` without `resume='true'`, ignores
    `<enabled id max>`, never sends `<resume>`.
@@ -659,8 +675,18 @@ M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
   in a table keyed by `PurpleAccount`, not in `JabberStream`, so M10 can
   keep it across a transport reconnect. `jabber_close()` frees it via
   `jabber_sm_close()`; `JabberStream` keeps only `sm_state`.
-- `<enable resume='true'/>` is sent and `<enabled/>` parsed and logged
-  (debug `xmpp2-sm`), but never used for `<resume/>` until M10.
+- `<enable/>` is sent without `resume='true'` (tech lead decision: the
+  server must not hold a session we never resume) until M10 implements
+  `<resume/>`; `<enabled/>` is parsed and logged (debug `xmpp2-sm`).
+- Only `<message>` stanzas with a body and a `to` are copied into the
+  unacked queue (they are all that is ever reported); other stanzas queue a
+  NULL placeholder that keeps the sequence numbers.
+- Raw XML from `send_raw` (the XML console) is parsed while SM is on (a
+  wrapper element allows several top-level stanzas in one write) and each
+  stanza is counted like any other, else the server's `h` overtakes ours and
+  the stream ends with `handled-count-too-high`. Input that is not a
+  sequence of complete elements is refused (not sent) with an error
+  dialog while SM is on.
 - Counters wrap modulo 2^32. Each queued stanza carries its sequence number,
   so an ack trims exactly the stanzas in `(acked, h]` even after the queue
   overflowed. An `h` beyond what was sent ends the stream with
@@ -678,7 +704,9 @@ M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
   may not have been delivered: TEXT"; then the queue is emptied. Tech lead
   decision for v1: the user is told instead of an automatic resend; the
   MAM-checked resend once planned here is left for M10/M3 follow-up if
-  wanted. A clean sign-off reports nothing.
+  wanted. A clean sign-off reports unacked messages the same way ("Signed
+  off before the server confirmed this message, it may not have been
+  delivered: TEXT"): the stream close does not wait for a last ack.
 
 Resumption (M10) is limited by Pidgin itself: on a NetworkManager "down"
 event Pidgin calls `purple_account_disconnect()` on every account

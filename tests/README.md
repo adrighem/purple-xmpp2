@@ -32,8 +32,10 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   flag noflag mtime timeout n text`; `kind=notify` matches
   `purple_notify_message()` dialogs), `expect-debug|no-debug|count-debug`
   (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
-  `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`, `drop`
-  (shutdown() the c2s socket without a stream close, like a network drop),
+  `cmd`, `correct`, `upload|upload-fail|upload-drop`, `logcount`, `pref`,
+  `drop` (shutdown() the c2s socket without a stream close, like a network
+  drop), `raw|raw-refused` (send XML through the prpl's `send_raw`, the XML
+  console path),
   `action TEXT` (run a prpl action by label), `answer N`/`no-request`
   (`purple_request_action()` has a recording UI: the script presses a
   button), `expect-account PRPL USER enabled= connected= exists=` (any account
@@ -109,3 +111,9 @@ Missing tools give exit 77 (skipped).
     ctest --test-dir build -L unit
     ctest --test-dir build -L smoke
     ctest --test-dir build -L integration
+
+Test-only hooks in the plugin (`XMPP2_TEST_MAM_STALL` and the like) exist
+only with `-DXMPP2_TEST_HOOKS=ON` (CI sets it). ctest passes
+`XMPP2_TEST_HOOKS=1|0` to every test; a test that needs the hooks exits 77
+(or skips the step) when it is 0. Run by hand with `XMPP2_TEST_HOOKS=1` on a
+hooks build.
