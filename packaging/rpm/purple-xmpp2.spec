@@ -37,9 +37,5 @@ correction. It installs next to the built-in XMPP plugin.
 
 %files
 %license LICENSE
-%doc README.md
+%doc README.md COPYRIGHT.pidgin
 %{_libdir}/purple-2/libxmpp2.so
-
-%changelog
-* Thu Nov 19 2026 Vincent van Adrighem <vincent-git@vanadrighem.eu> - 0.1.0-1
-- Initial package

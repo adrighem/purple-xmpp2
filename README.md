@@ -35,9 +35,12 @@ resumption is best effort and may slip to v0.2. Google Talk extensions, Jingle
 (voice and video), BOSH, Cyrus SASL, and DIGEST-MD5 are dropped. Requires
 libpurple 2.14.12 or newer.
 
-On first connect, catch-up fetches the last day of the archive by default; this
-is an account option (0 disables it). Cloned accounts behave the same, so a few
-messages may appear twice next to the old XMPP plugin's logs.
+On first connect, a new XMPP2 account fetches the last day of the archive by
+default (an account option; 0 disables it). An account cloned from an existing
+XMPP account does no history replay: its first sync only records a cursor, so
+you do not get duplicates next to the old plugin's logs.
+
+Release is gated: v0.1.0 is not published until all v1 milestones pass.
 
 This table is updated as each milestone lands; see
 [docs/PLAN.md](docs/PLAN.md) for the schedule and
@@ -52,7 +55,7 @@ Download the `.deb` for your distribution from the
 primary install path) and install it:
 
 ```sh
-sudo apt install ./purple-xmpp2_<version>-1_<debian-13|ubuntu-24.04>_amd64.deb
+sudo apt install ./purple-xmpp2_<version>_<debian-13|ubuntu-24.04>_amd64.deb
 ```
 
 A signed APT repository on GitHub Pages is coming soon.
@@ -74,19 +77,22 @@ sudo cmake --install build
 ```
 
 This installs `libxmpp2.so` into libpurple's plugin directory
-(`pkg-config --variable=plugindir purple`). Fully quit and restart Pidgin, then
+(`pkg-config --variable=plugindir purple`). For a per-user install without
+root, use `cmake -B build -DXMPP2_PLUGIN_DIR=$HOME/.purple/plugins` and
+`cmake --install build`. Fully quit and restart Pidgin, then
 look for **XMPP2** under Accounts, Manage Accounts, Add.
 
 ## Using it
 
 ### Migrating an existing XMPP account
 
-Pidgin's **Accounts, Manage Accounts** dialog lets you add an account with the
-**XMPP2** protocol using the same username, domain, and password as your
-existing XMPP account. If the clone option is available in your build, choose
-it to copy an existing XMPP account. Keep the original until you are happy, then
-disable or delete it. Do not enable both accounts at once: two sessions with the
-same resource conflict, so give the new account a different resource.
+In Pidgin, the plugin offers to migrate (clone) an existing XMPP account when
+you first enable it; other libpurple clients do not get this offer. You can
+always add an **XMPP2** account by hand with the same username, domain, and
+password. A cloned account starts from the current point in the archive and
+replays no history. Keep the original until you are happy, then disable or
+delete it. Do not enable both accounts at once: two sessions with the same
+resource conflict, so give the new account a different resource.
 
 ### Coexistence with built-in XMPP
 

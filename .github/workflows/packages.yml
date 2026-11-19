@@ -22,8 +22,10 @@ jobs:
         include:
           - name: debian-13
             image: debian:13
+            suffix: deb13u1
           - name: ubuntu-24.04
             image: ubuntu:24.04
+            suffix: ubuntu24.04.1
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
@@ -49,7 +51,7 @@ jobs:
           version="$(tr -d '[:space:]' < version.txt)"
           date_rfc="$(date -R -d "@$(git log -1 --format=%ct)")"
           cat > debian/changelog <<CHANGELOG
-          purple-xmpp2 (${version}-1) unstable; urgency=medium
+          purple-xmpp2 (${version}+${{ matrix.suffix }}) unstable; urgency=medium
 
             * Release ${version}.
 
@@ -63,10 +65,9 @@ jobs:
       - name: Collect package
         run: |
           mkdir -p dist
+          version="$(tr -d '[:space:]' < version.txt)"
           for f in ../purple-xmpp2_*.deb; do
-            base="$(basename "$f" .deb)"
-            name="${base%_amd64}_${{ matrix.name }}_amd64.deb"
-            cp "$f" "dist/$name"
+            cp "$f" "dist/purple-xmpp2_${version}_${{ matrix.name }}_amd64.deb"
           done
           ls -l dist
 

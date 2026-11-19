@@ -4,7 +4,20 @@ Source: https://github.com/adrighem/purple-xmpp2
 
 Files: *
 Copyright: 2026 Vincent van Adrighem
- 1998-2026 Pidgin, Purple, and libpurple jabber plugin contributors
+License: GPL-2+
+
+Files: src/*
+Copyright: 1998-2024 the Pidgin, Finch, and libpurple contributors
+ (full list in COPYRIGHT.pidgin)
+License: GPL-2+
+Comment: Forked from libpurple/protocols/jabber in Pidgin 2.14.14.
+
+Files: tests/integration/harness.c
+Copyright: 1998-2024 the Pidgin, Finch, and libpurple contributors
+ 2026 Vincent van Adrighem
+License: GPL-2+
+Comment: Derived from libpurple/example/nullclient.c in Pidgin 2.14.14.
+
 License: GPL-2+
  This program is free software; you can redistribute it and/or modify it
  under the terms of the GNU General Public License as published by the Free

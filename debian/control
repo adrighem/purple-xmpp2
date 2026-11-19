@@ -18,7 +18,7 @@ Vcs-Browser: https://github.com/adrighem/purple-xmpp2
 Vcs-Git: https://github.com/adrighem/purple-xmpp2.git
 
 Package: purple-xmpp2
-Architecture: amd64
+Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Recommends: pidgin
 Description: XMPP protocol plugin with message archive catch-up for libpurple 2

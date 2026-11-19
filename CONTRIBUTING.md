@@ -8,8 +8,9 @@ for the design and the milestone plan.
 ## Build
 
 Dependencies: CMake, a C compiler, Ninja (optional), pkg-config, and development
-files for libpurple 2.14, GLib, libxml2, and libidn. Cyrus SASL is optional
-(`-DXMPP2_CYRUS_SASL=ON`, needs `libsasl2-dev` or `cyrus-sasl-devel`).
+files for libpurple 2.14, GLib, libxml2, and libidn. Google Talk extensions,
+Jingle, BOSH, Cyrus SASL, and DIGEST-MD5 were removed from
+the fork and are not built.
 
 ```sh
 # Debian / Ubuntu
@@ -23,6 +24,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
+To install per user instead, configure with
+`-DXMPP2_PLUGIN_DIR=$HOME/.purple/plugins` and run `cmake --install build`.
 To try the plugin without touching the system, copy `build/libxmpp2.so` to
 `~/.purple/plugins/` and start `pidgin`. The plugin id is `prpl-xmpp2`; it
 coexists with the built-in XMPP plugin.
