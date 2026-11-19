@@ -35,7 +35,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   (shutdown() the c2s socket without a stream close, like a network drop).
   Exit 0 or 1.
 - `peer.py` is a scripted slixmpp peer (reference in its docstring):
-  `--resource`, `--feature NS` (advertise a caps feature), `send|sendr|sendmany|correct|raw`, `wait|nowait`,
+  `--resource`, `--feature NS` (advertise a caps feature), `send|sendr|sendmany|correct|raw`,
+  `groupsend|groupsendmany` (rooms), `wait|nowait`,
   `expect-stanza|no-stanza|count-stanza|expect-out` (regex on raw stanzas),
   `receipts|markers|carbons on|off`, `bind NAME REGEX` (store group 1 of a stanza, `${NAME}` in later actions), `mam`, `disco`, `join`, `upload`,
   `sha256`, `befriend`, `abort`, `--stay SECS`. It can send while the harness
@@ -62,7 +63,10 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `/correct`, caps, offline delivery).
 - `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
   harness and peer primitive (works with both prpls). `test_sm.sh` covers
-  stream management (prpl-xmpp2 only, else exit 77).
+  stream management (prpl-xmpp2 only, else exit 77). `test_mam_muc.sh`,
+  `test_mam_muc_bulk.sh` and `test_mam_muc_legacy.sh` (profile `nomam`)
+  cover room history (PLAN M4); the state file's `[archive <room>]`
+  section holds the room cursor.
 
 Running several suites at once on one host: use a private server with
 `XMPP2_TEST_CONTAINER=name XMPP2_TEST_C2S_PORT=N XMPP2_TEST_HTTP_PORT=M`,
