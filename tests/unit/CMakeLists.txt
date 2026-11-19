@@ -21,6 +21,7 @@ endfunction()
 x2_unit_test(sid)
 x2_unit_test(forward)
 x2_unit_test(dedup)
+x2_unit_test(carbon_parse)
 
 # The X2Msg pipeline: real ext.c, msgctx.c and jutil.c against the module
 # table and stubs in test_msgctx.c.
@@ -36,4 +37,20 @@ target_link_libraries(test-msgctx PRIVATE PkgConfig::LIBXML)
 if(XMPP2_IDN)
     target_compile_definitions(test-msgctx PRIVATE USE_IDN)
     target_link_libraries(test-msgctx PRIVATE PkgConfig::LIBIDN)
+endif()
+
+# The carbons module inside the real pipeline, with stubbed IQ and delivery.
+x2_unit_test(carbons
+    ${PROJECT_SOURCE_DIR}/src/ext/carbons.c
+    ${PROJECT_SOURCE_DIR}/src/ext/ext.c
+    ${PROJECT_SOURCE_DIR}/src/ext/msgctx.c
+    ${PROJECT_SOURCE_DIR}/src/jutil.c)
+target_include_directories(test-carbons PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(test-carbons PRIVATE
+    PURPLE_PLUGINS X2_EXT_TEST_TABLE=x2_test_exts)
+target_compile_options(test-carbons PRIVATE -Wno-unused-parameter)
+target_link_libraries(test-carbons PRIVATE PkgConfig::LIBXML)
+if(XMPP2_IDN)
+    target_compile_definitions(test-carbons PRIVATE USE_IDN)
+    target_link_libraries(test-carbons PRIVATE PkgConfig::LIBIDN)
 endif()
