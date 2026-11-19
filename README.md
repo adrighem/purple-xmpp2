@@ -25,12 +25,13 @@ the server archive and shows it in the right conversation.
 | Message carbons | XEP-0280 | Implemented (M2) |
 | Stream management | XEP-0198 | Batched acks; unacked messages reported on connection loss (resumption planned) |
 | HTTP file upload | XEP-0363 | Implemented (M7), falls back to SI file transfer |
-| Delivery receipts | XEP-0184 | Planned |
-| Chat markers | XEP-0333 | Planned |
+| Delivery receipts | XEP-0184 | Implemented (M5), signal `xmpp2-receipt` and optional notice |
+| Chat markers | XEP-0333 | Implemented (M5), `displayed` sent on focus, signal `xmpp2-marker` |
 | Message correction | XEP-0308 | Planned |
 
 Limits for v1: receipts and chat markers are exposed as protocol support,
-signals, and an optional notice line, with no tick icons in the GTK UI. Stream
+signals (`xmpp2-receipt`, `xmpp2-marker`), and an optional notice line (account
+option "Show delivery and read notices", default off), with no tick icons in the GTK UI. Stream
 resumption is best effort and may slip to v0.2. Google Talk extensions, Jingle
 (voice and video), BOSH, Cyrus SASL, and DIGEST-MD5 are dropped. Requires
 libpurple 2.14.12 or newer.

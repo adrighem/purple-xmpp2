@@ -42,6 +42,8 @@ Files (no aiohttp needed):
 Connection:
   abort                     drop the TCP connection without closing the stream
 
+Options: --feature NS advertises a feature in caps and disco (repeatable).
+
 Exit status 0 when every action succeeded, 1 otherwise. With --stay SECS the
 peer keeps the session open after the last action (for background peers).
 """
@@ -336,6 +338,8 @@ class Peer(slixmpp.ClientXMPP):
 async def main(args: argparse.Namespace) -> int:
     jid = args.jid if "/" in args.jid else f"{args.jid}/{args.resource}"
     peer = Peer(jid, args.password, args.timeout)
+    for ns in args.feature:
+        peer["xep_0030"].add_feature(ns)
     started = asyncio.Event()
 
     async def on_start(_event: object) -> None:
@@ -377,5 +381,7 @@ if __name__ == "__main__":
     ap.add_argument("--stay", type=float, default=0.0)
     ap.add_argument("--script")
     ap.add_argument("--do", action="append", default=[], metavar="ACTION")
+    ap.add_argument("--feature", action="append", default=[], metavar="NS",
+                    help="advertise a disco/caps feature (repeatable)")
     logging.basicConfig(level=logging.ERROR)
     sys.exit(asyncio.run(main(ap.parse_args())))

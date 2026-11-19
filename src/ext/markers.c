@@ -43,6 +43,7 @@ typedef struct {
 } MarkersPriv;
 
 static PurplePlugin *signal_plugin;
+static gboolean signal_connected;
 
 static void
 peer_state_free(gpointer data)
@@ -93,6 +94,8 @@ conversation_updated_cb(PurpleConversation *conv, PurpleConvUpdateType type)
 	bare = jabber_get_bare_jid(purple_conversation_get_name(conv));
 	st = bare ? g_hash_table_lookup(priv->peers, bare) : NULL;
 	if (st == NULL || st->last_id == NULL) {
+		purple_debug_info(LOG, "no markable message to mark for %s\n",
+		                  bare ? bare : "(none)");
 		g_free(bare);
 		return;
 	}
@@ -128,15 +131,31 @@ markers_plugin_init(PurplePlugin *plugin)
 		purple_value_new(PURPLE_TYPE_STRING),
 		purple_value_new(PURPLE_TYPE_STRING));
 
-	purple_signal_connect(purple_conversations_get_handle(),
-	                      "conversation-updated", plugin,
-	                      PURPLE_CALLBACK(conversation_updated_cb), NULL);
+}
+
+/* Prpls may be loaded before the conversation subsystem registers its
+ * signals (see stream_management.c), so connect on the first stream. */
+static void
+connect_conversation_signal(void)
+{
+	if (signal_connected || signal_plugin == NULL)
+		return;
+	if (purple_signal_connect(purple_conversations_get_handle(),
+	                          "conversation-updated", signal_plugin,
+	                          PURPLE_CALLBACK(conversation_updated_cb),
+	                          NULL) == 0) {
+		purple_debug_error(LOG, "cannot connect to conversation-updated\n");
+		return;
+	}
+	signal_connected = TRUE;
 }
 
 static void
 markers_plugin_uninit(PurplePlugin *plugin)
 {
-	purple_signals_disconnect_by_handle(plugin);
+	if (signal_connected)
+		purple_signals_disconnect_by_handle(plugin);
+	signal_connected = FALSE;
 	jabber_remove_feature(NS_CHAT_MARKERS);
 	signal_plugin = NULL;
 }
@@ -146,6 +165,7 @@ markers_stream_new(JabberStream *js)
 {
 	MarkersPriv *priv = g_new0(MarkersPriv, 1);
 
+	connect_conversation_signal();
 	priv->sent = x2_dedup_new(SENT_CAPACITY);
 	priv->peers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
 	                                    peer_state_free);
@@ -233,6 +253,7 @@ remember_markable(JabberStream *js, const X2Msg *m, const char *id)
 	if (st->last_id != NULL && m->ts < st->last_ts)
 		return;
 
+	purple_debug_info(LOG, "markable %s from %s\n", id, m->peer);
 	g_free(st->last_id);
 	st->last_id = g_strdup(id);
 	st->last_ts = m->ts;

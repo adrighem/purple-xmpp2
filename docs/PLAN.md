@@ -234,7 +234,17 @@ Acceptance:
     with inner `type='chat'` is still delivered into the room, never as a
     1:1 conversation.
 
-## M5: receipts and chat markers (XEP-0184, XEP-0333)
+## M5: receipts and chat markers (XEP-0184, XEP-0333) (done)
+
+Status: done. `ext/receipts.c`, `ext/markers.c`, `ext/peerutil.c` (shared
+policy and notice helper), `core/receipt_parse.c`; unit test
+`test_receipt_parse`; integration `test_receipts.sh` and `test_markers.sh`
+(the peer gained `--feature NS` to advertise caps; receipts need a
+subscription of the contact to us, which the tests set up through a second
+alice resource, since the harness cannot approve subscription requests).
+Policy beyond the list: requests and `markable` are skipped when the
+contact's caps are known and lack the namespace, and for room occupants; an
+answer from a JID we did not ask, or for an id we did not send, is ignored.
 
 Acceptance:
 - Outgoing 1:1 messages carry `<request xmlns='urn:xmpp:receipts'/>` and

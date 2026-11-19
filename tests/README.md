@@ -35,7 +35,7 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   (shutdown() the c2s socket without a stream close, like a network drop).
   Exit 0 or 1.
 - `peer.py` is a scripted slixmpp peer (reference in its docstring):
-  `--resource`, `send|sendr|sendmany|correct|raw`, `wait|nowait`,
+  `--resource`, `--feature NS` (advertise a caps feature), `send|sendr|sendmany|correct|raw`, `wait|nowait`,
   `expect-stanza|no-stanza|count-stanza|expect-out` (regex on raw stanzas),
   `receipts|markers|carbons on|off`, `mam`, `disco`, `join`, `upload`,
   `sha256`, `befriend`, `abort`, `--stay SECS`. It can send while the harness
