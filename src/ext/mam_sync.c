@@ -264,6 +264,13 @@ query_cb(JabberStream *js, const char *from, JabberIqType type,
 			retry_from_ts(a);
 			return;
 		}
+		/* An archive that refuses the ids probe (or no longer knows
+		 * the cursor) gets the same answer as a lost cursor. */
+		if (a->kind == X2_MAMQ_PROBE && !a->retried) {
+			purple_debug_info(X2_MAM_DEBUG, "cursor probe failed\n");
+			retry_from_ts(a);
+			return;
+		}
 		purple_debug_error(X2_MAM_DEBUG, "archive query failed\n");
 		x2_mam_sync_finish(a, FALSE,
 		                   _("Message history may be incomplete: the "
