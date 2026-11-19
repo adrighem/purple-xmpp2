@@ -55,6 +55,7 @@ VirtualHost "localhost"
 Component "conference.localhost" "muc"
 	modules_enabled = without({ "muc_mam" })
 	restrict_room_creation = false
+	muc_room_locking = false  -- no instant-room dance for the first joiner
 	muc_room_default_persistent = true
 	muc_room_default_public = true
 

@@ -25,15 +25,40 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 ## 2. Integration (`tests/integration/`)
 
 - `harness.c` builds to `xmpp2-harness`, a headless libpurple client driven
-  by a line script (`connect`, `send`, `wait`, `absent`, `count`, `sleep`,
-  `disconnect`, `quit`; see the header of the file). Exit 0 or 1.
-- `peer.py` is a scripted slixmpp peer (`send`, `wait`, `mam`, `disco`,
-  `join`, `groupsend`, `groupwait`, `streamfeatures`). It can send while the
-  harness is offline, which is the basis for MAM catch-up tests.
-- `lib.sh` has shared helpers (venv, harness build, server, `peer`,
-  `harness`). Scratch lives in `$XMPP2_SCRATCH` (default
-  `$TMPDIR/xmpp2-scratch-<uid>`); slixmpp (pinned in `requirements.txt`) is installed into a venv there.
-- `test_basic.sh` is the 1:1 baseline, both directions.
+  by a line script. The full command and filter reference is the header
+  comment of the file. Highlights: `--userdir` (persistent state, logs),
+  `--log txt`, machine-readable `EV` lines for every conversation write,
+  `expect-ev|expect-next|no-ev|count-ev` with filters (`kind conv who ctype
+  flag noflag mtime timeout n text`), `expect-debug|no-debug|count-debug`
+  (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
+  `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`. Exit 0 or 1.
+- `peer.py` is a scripted slixmpp peer (reference in its docstring):
+  `--resource`, `send|sendr|sendmany|correct|raw`, `wait|nowait`,
+  `expect-stanza|no-stanza|count-stanza|expect-out` (regex on raw stanzas),
+  `receipts|markers|carbons on|off`, `mam`, `disco`, `join`, `upload`,
+  `sha256`, `befriend`, `abort`, `--stay SECS`. It can send while the harness
+  is offline, which is the basis for MAM catch-up tests.
+- `lib.sh` has shared helpers. A feature test is just:
+
+      source "$HERE/lib.sh"; test_init carbons
+      peer_bg "$WORK/phone.log" alice --stay 30 --do "send bob@localhost c1"
+      run_harness alice <<SCRIPT
+      connect 30
+      expect-ev kind=sent flag=REMOTE_SEND text=c1
+      SCRIPT
+
+  `test_init` sets up `$WORK`, cleanup and the server (profile from
+  `XMPP2_SERVER_PROFILE`); `HUSERDIR`/`HLOG` give a persistent userdir and
+  logs; `PEER_RESOURCE=phone` picks the peer resource. Scratch lives in
+  `$XMPP2_SCRATCH`; slixmpp is pinned in `requirements.txt`.
+  Put `timeout=` and other filter keys before `text=`, which takes the rest
+  of the line.
+- `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
+  harness and peer primitive (works with both prpls).
+
+Running several suites at once on one host: use a private server with
+`XMPP2_TEST_CONTAINER=name XMPP2_TEST_C2S_PORT=N XMPP2_TEST_HTTP_PORT=M`,
+otherwise they restart each other's container.
 
 Baseline with the built-in Pidgin jabber prpl, then the plugin under test:
 
