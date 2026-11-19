@@ -29,6 +29,7 @@
 #define SENT_CAPACITY 256
 
 extern const X2Ext x2_ext_receipts;
+extern const X2Ext x2_ext_receipts_answer;
 
 static PurplePlugin *signal_plugin;
 
@@ -159,14 +160,31 @@ receipts_inbound(JabberStream *js, X2Msg *m)
 		if (xmlnode_get_child(m->msg, "body") == NULL)
 			return X2_CONSUMED;
 	}
+	return X2_PASS;
+}
+
+/*
+ * Requests are answered by a second table entry that runs before `mam`:
+ * a live message that arrives during the MAM catch-up is queued, and is
+ * dropped when the archive page already showed it, so after `mam` its
+ * request would never be answered.  The receipt acknowledges the live
+ * stanza, whatever happens to its display.  Carbons are unwrapped by then
+ * (not live); an archive result is still the outer <message>, which has no
+ * request of its own.
+ */
+static X2Verdict
+receipts_answer_inbound(JabberStream *js, X2Msg *m)
+{
+	const char *from = xmlnode_get_attrib(m->msg, "from");
+	char *id;
 
 	/* never for archive results, carbons or delayed (offline) messages */
-	if (live && from != NULL) {
-		id = x2_receipt_request_id(m->msg);
-		if (id != NULL) {
-			answer_request(js, from, id);
-			g_free(id);
-		}
+	if (!x2_msg_is_live_incoming(m) || from == NULL)
+		return X2_PASS;
+	id = x2_receipt_request_id(m->msg);
+	if (id != NULL) {
+		answer_request(js, from, id);
+		g_free(id);
 	}
 	return X2_PASS;
 }
@@ -180,4 +198,10 @@ const X2Ext x2_ext_receipts = {
 	.stream_free = receipts_stream_free,
 	.inbound = receipts_inbound,
 	.outbound = receipts_outbound,
+};
+
+/* Stateless; uses only the stream and the roster. */
+const X2Ext x2_ext_receipts_answer = {
+	.name = "receipts-answer",
+	.inbound = receipts_answer_inbound,
 };

@@ -91,6 +91,26 @@ wait "$BOB_PID" || { cat "$WORK/bob2.log"; fail "bob got no receipt"; }
 wait "$CAROL_PID" || { cat "$WORK/carol.log"; fail "stranger got a receipt"; }
 pass "receipt for a roster contact, none for a stranger"
 
+# 2b. A live request that arrives during the MAM catch-up is answered at
+# once, before mam queues the message (the archive page may show it and drop
+# the live copy). XMPP2_TEST_MAM_STALL keeps the archive SYNCING.
+if [[ "${XMPP2_TEST_HOOKS:-0}" == 1 ]]; then
+	peer_bg "$WORK/bob2b.log" bob --stay 1 --do "sleep 4" \
+		--do "sendr alice@localhost sync-b" --do "expect-stanza $RECEIVED"
+	BOB_PID=$PEER_PID
+	XMPP2_TEST_MAM_STALL=1 run_harness alice "${HARNESS_OPTS[@]}" <<SCRIPT
+connect 30
+expect-debug cat=xmpp2-mam timeout=15 text=queued during catch-up
+expect-debug cat=xmpp2-receipts timeout=2 text=sent receipt for
+no-debug timeout=1 cat=xmpp2-mam text=account archive LIVE
+disconnect
+SCRIPT
+	wait "$BOB_PID" || { cat "$WORK/bob2b.log"; fail "no receipt during catch-up"; }
+	pass "request answered while the message waits for the catch-up"
+else
+	echo "SKIP 2b: needs -DXMPP2_TEST_HOOKS=ON"
+fi
+
 # 3. A message that waited in offline storage (delayed) gets no receipt.
 run_peer bob --do "sendr alice@localhost offline-b" --do "sleep 1" >/dev/null
 peer_bg "$WORK/bob3.log" bob --stay 1 --do "no-stanza $RECEIVED 10"

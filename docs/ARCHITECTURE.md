@@ -302,6 +302,10 @@ Order of the inbound chain (registry order matters and is fixed):
    for `sent` the inner `from` bare JID equals ours, for `received` the inner
    `to` bare JID equals ours (else drop and log: forged carbon). Unwrap, set
    `src=CARBON`, `dir`.
+   Then `receipts-answer` (second table entry of `ext/receipts.c`): answer a
+   receipt request of a live message (rule in 7.4) before `mam` can queue
+   it, or drop it as the duplicate of an archive result shown during the
+   catch-up (it would never be answered after that).
 2. `mam`: if it carries `urn:xmpp:mam:2` `<result>`, verify outer `from` is
    the archive we queried (own bare JID or the room) and `queryid` matches
    an active query (else drop). Unwrap `<forwarded>` and check the inner
@@ -317,9 +321,9 @@ Order of the inbound chain (registry order matters and is fixed):
    return `X2_DEFERRED` (ownership: see above). The
    queue is flushed to the UI (with dedup) on `LIVE`, on watchdog expiry and
    on stream teardown: a duplicate beats a lost message.
-4. `receipts`, `markers`, `correction`: consume pure control messages
-   (`<received/>`, `<displayed/>` without body), answer receipt requests,
-   rewrite corrections.
+4. `correction`, `upload`, `receipts`, `markers` (table order): rewrite
+   corrections, consume pure control messages (`<received/>`,
+   `<displayed/>` without body).
 5. Deliver: `msgctx` calls the upstream handlers in `message.c` with the
    context. `dir=OUT` writes into the IM conversation for `peer` with
    `PURPLE_MESSAGE_SEND | PURPLE_MESSAGE_REMOTE_SEND`; `dir=IN` keeps the
@@ -477,7 +481,9 @@ Implemented in `ext/receipts.c` (`core/receipt_parse.c`). Outgoing:
 `<request/>` on 1:1 messages with a body, unless the recipient resource is
 known from caps and lacks `urn:xmpp:receipts`, or is a room occupant
 (unknown caps count as supported); the (bare JID, id) pair is remembered in a
-256 entry set. Incoming request: reply
+256 entry set. Incoming request (answered by the `receipts-answer` entry,
+which runs before `mam`, so a live message queued or deduplicated during
+the MAM catch-up is still answered, on arrival): reply
 `<received id=.../>` to the full JID only when `src=LIVE`, `type!='groupchat'`
 and the sender is in the roster with presence subscription (no presence
 leak to strangers; same as Gajim). Incoming `<received/>`: emit the purple
