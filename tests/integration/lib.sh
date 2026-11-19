@@ -3,7 +3,9 @@
 # shellcheck shell=bash
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SCRATCH="${XMPP2_SCRATCH:-${TMPDIR:-/tmp}/xmpp2-scratch-$(id -u)}"
+# One scratch dir per server container: server.env, server.crt and the venv
+# of concurrent runs with different XMPP2_TEST_CONTAINER must not collide.
+SCRATCH="${XMPP2_SCRATCH:-${TMPDIR:-/tmp}/xmpp2-scratch-$(id -u)-${XMPP2_TEST_CONTAINER:-xmpp2-test-prosody}}"
 VENV="${XMPP2_VENV:-$SCRATCH/venv}"
 HARNESS="${XMPP2_HARNESS:-$SCRATCH/xmpp2-harness}"
 SERVER_SH="$ROOT/tests/server/run.sh"
