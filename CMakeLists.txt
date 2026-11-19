@@ -55,6 +55,9 @@ set(XMPP2_SOURCES
     src/ext/mam.c
     src/ext/mam_sync.c
     src/ext/markers.c
+    src/ext/migrate.c
+    src/ext/migrate_blist.c
+    src/ext/migrate_clone.c
     src/ext/msgctx.c
     src/ext/statefile.c
     src/ext/upload.c
@@ -90,6 +93,7 @@ add_library(x2core STATIC
     src/core/mam_proto.c
     src/core/receipt_parse.c
     src/core/replace_parse.c
+    src/core/migrate_map.c
     src/core/sid.c
     src/core/smstate.c
     src/core/store.c

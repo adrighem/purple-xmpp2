@@ -27,6 +27,7 @@ x2_unit_test(smstate)
 x2_unit_test(store)
 x2_unit_test(upload)
 x2_unit_test(receipt_parse)
+x2_unit_test(migrate_map)
 
 # The X2Msg pipeline: real ext.c, msgctx.c and jutil.c against the module
 # table and stubs in test_msgctx.c.

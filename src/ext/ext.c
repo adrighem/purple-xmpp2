@@ -29,6 +29,7 @@ extern const X2Ext x2_ext_correct;
 extern const X2Ext x2_ext_upload;
 extern const X2Ext x2_ext_receipts;
 extern const X2Ext x2_ext_markers;
+extern const X2Ext x2_ext_migrate;
 /* ... one line per module */
 
 static const X2Ext *const x2_exts[] = {
@@ -38,6 +39,7 @@ static const X2Ext *const x2_exts[] = {
 	&x2_ext_upload,
 	&x2_ext_receipts,
 	&x2_ext_markers,
+	&x2_ext_migrate,
 	/* ... */
 	NULL
 };
