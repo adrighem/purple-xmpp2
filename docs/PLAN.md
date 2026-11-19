@@ -443,7 +443,8 @@ Acceptance:
   inclusive-start skip on item-not-found, MUC `maxstanzas='0'` and once-per-join
   query, page cap with notice for the account archive.
 - Inherited debug category `jabber` becomes `xmpp2` in M1.
-- Target libpurple >= 2.14.12 (Ubuntu 24.04).
+- Target libpurple >= 2.14 (tested on 2.14.12, Ubuntu 24.04, and 2.14.14,
+  Debian 13).
 - No release PR is merged until every v1 milestone has passed QA; the tech
   lead gates the merge.
 - M10 (stream resumption) is deferred to v0.2. v0.1.0 is M1 to M9, plus M11
@@ -460,3 +461,5 @@ Acceptance:
   and `xmpp2-marker` signals.
 - Later XEPs: displayed sync (0490), retraction (0424), reactions (0444),
   replies (0461), bookmarks 2 (0402), client state indication (0352).
+- Split `tests/integration/harness.c` (one large file) into modules (accounts,
+  requests, script commands, filters).
