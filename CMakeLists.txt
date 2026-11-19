@@ -50,9 +50,12 @@ set(XMPP2_SOURCES
     src/disco.c
     src/ext/carbons.c
     src/ext/ext.c
+    src/ext/markers.c
     src/ext/msgctx.c
     src/ext/upload.c
     src/ext/upload_xfer.c
+    src/ext/peerutil.c
+    src/ext/receipts.c
     src/ibb.c
     src/iq.c
     src/jabber.c
@@ -78,6 +81,7 @@ add_library(x2core STATIC
     src/core/carbon_parse.c
     src/core/dedup.c
     src/core/forward.c
+    src/core/receipt_parse.c
     src/core/sid.c
     src/core/smstate.c
     src/core/upload_proto.c)
