@@ -408,13 +408,14 @@ Account archive, after the carbons enable result (follows Gajim's `mam.py`):
   limit: when the cursor id is corrupt rather than pruned, the message at
   `cursor_ts` itself can show once more (its real id differs from the stored
   one).
-- Offline storage (XEP-0160) overlap: after a complete catch-up that covered
-  the range (results came back, the cursor was found, or a `start` query),
-  queued messages that are delayed and carry a trusted stanza-id are
-  dropped: they are archived, so they were shown from the archive or lie in
-  the part the page cap skipped on purpose (showing them after the newest
-  page would break ordering). Not after a cursor-only sync, where the
-  offline copy is the only way the message is shown.
+- Offline storage (XEP-0160) overlap: an offline copy that the archive also
+  returned is caught by its stanza-id (`S:` key) at flush time. Only after
+  a complete catch-up that ended on the newest page because of the page cap
+  are queued messages that are delayed and carry a trusted stanza-id
+  dropped without being seen: they lie in the part the cap skipped on
+  purpose, and showing them after the newest page would break ordering
+  (`x2_mam_queued_fate()`). In every other case they are shown: dropping
+  them could only lose messages.
 - Incomplete catch-up (error, watchdog, teardown): the cursor is frozen for
   the rest of the session, live messages no longer move it, so the next
   login fetches the gap again (live messages of this session may then show

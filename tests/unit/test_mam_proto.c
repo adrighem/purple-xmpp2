@@ -284,6 +284,28 @@ test_result_missing_parts(void)
 		&inner, &id, &why), ==, X2_MAM_FORGED);
 }
 
+/* Review fix 5: an offline copy is dropped only after a page-cap skip */
+static void
+test_queued_fate(void)
+{
+	/* seen: a duplicate, whatever else */
+	g_assert_cmpint(x2_mam_queued_fate(TRUE, TRUE, FALSE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_DUPLICATE);
+	/* complete forward catch-up: an unseen offline copy is news */
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, FALSE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+	/* page cap, newest page shown: the copy lies in the skipped part */
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, TRUE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_SKIPPED);
+	/* incomplete, live (not delayed), or untrusted: shown */
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, FALSE, TRUE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, TRUE, FALSE, TRUE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, TRUE, TRUE, FALSE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+}
+
 static void
 test_bare_equal(void)
 {
@@ -316,5 +338,6 @@ main(int argc, char **argv)
 	g_test_add_func("/mam/result/forged-inner", test_result_forged_inner);
 	g_test_add_func("/mam/result/missing-parts", test_result_missing_parts);
 	g_test_add_func("/mam/bare-equal", test_bare_equal);
+	g_test_add_func("/mam/queued-fate", test_queued_fate);
 	return g_test_run();
 }

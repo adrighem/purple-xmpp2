@@ -57,9 +57,6 @@ typedef struct {
 	char *iq_id;               /* IQ id of the active query */
 	guint pages;               /* pages answered in this catch-up */
 	gboolean from_cursor;      /* the catch-up started at after=cursor */
-	gboolean covered;          /* the archive answered for the whole range
-	                            * (results, a found cursor, or a start=
-	                            * query): offline copies are redundant */
 	gboolean retried;          /* item-not-found retry done */
 	gboolean capped;           /* page cap reached: history was skipped */
 	char *skip_id;             /* old cursor, skipped after the retry */

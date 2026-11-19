@@ -119,7 +119,6 @@ x2_mam_sync_begin(X2MamArchive *a)
 	x2_mam_sync_reset(a);
 	a->pages = 0;
 	a->from_cursor = FALSE;
-	a->covered = FALSE;
 	a->retried = FALSE;
 	a->capped = FALSE;
 	a->frozen = FALSE;
@@ -283,7 +282,6 @@ query_cb(JabberStream *js, const char *from, JabberIqType type,
 	                  fin.last ? fin.last : "(none)");
 
 	if (a->kind == X2_MAMQ_PROBE) {
-		a->covered = fin.last != NULL;
 		if (fin.last != NULL)
 			x2_mam_sync_finish(a, TRUE, NULL);
 		else
@@ -302,9 +300,6 @@ query_cb(JabberStream *js, const char *from, JabberIqType type,
 		x2_mam_fin_clear(&fin);
 		return;
 	}
-
-	if (fin.last != NULL || !a->from_cursor || a->kind == X2_MAMQ_LAST)
-		a->covered = TRUE;
 
 	if (a->kind == X2_MAMQ_LAST)
 		flush_page(a, a->capped || !fin.complete);
@@ -422,24 +417,22 @@ x2_mam_sync_finish(X2MamArchive *a, gboolean complete, const char *notice)
 	 * shown some of them already. */
 	g_hash_table_remove_all(a->gap_noticed);
 	while ((d = g_queue_pop_head(&a->queue)) != NULL) {
-		if (x2_mam_key_seen(a, d->key)) {
+		switch (x2_mam_queued_fate(x2_mam_key_seen(a, d->key), complete,
+		                           a->kind == X2_MAMQ_LAST, d->delayed,
+		                           d->stanza_id != NULL)) {
+		case X2_MAM_QUEUED_DUPLICATE:
 			purple_debug_info(X2_MAM_DEBUG, "queued duplicate %s "
 			                  "dropped\n", d->key);
 			x2_msg_free(d);
 			continue;
-		}
-		/* Offline storage (XEP-0160) replays what the archive already
-		 * had when we queried it: a delayed message with an archive
-		 * stanza-id lies inside the range a complete catch-up covered,
-		 * or in the part the page cap skipped on purpose.  Not when an
-		 * empty answer may hide a lost cursor (!covered).  A cursor-only
-		 * sync showed nothing, so there the offline copy is the news. */
-		if (complete && a->covered && a->kind != X2_MAMQ_CURSOR_ONLY &&
-		    d->delayed && d->stanza_id != NULL) {
+		case X2_MAM_QUEUED_SKIPPED:
 			purple_debug_info(X2_MAM_DEBUG, "queued offline copy %s "
-			                  "covered by the archive\n", d->key);
+			                  "in the history the page cap skipped\n",
+			                  d->key);
 			x2_msg_free(d);
 			continue;
+		case X2_MAM_QUEUED_DELIVER:
+			break;
 		}
 		if (notice != NULL && !a->room && d->peer != NULL &&
 		    g_hash_table_add(a->gap_noticed, g_strdup(d->peer)))

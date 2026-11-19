@@ -113,6 +113,28 @@ gboolean x2_mam_inner_is_own(const xmlnode *inner, const char *own_bare);
 /** TRUE if the bare part of @a jid (resource stripped) equals @a bare. */
 gboolean x2_mam_bare_equal(const char *jid, const char *bare);
 
+/** Fate of a live message held back during a catch-up, when it ends. */
+typedef enum {
+	X2_MAM_QUEUED_DELIVER,    /* show it now */
+	X2_MAM_QUEUED_DUPLICATE,  /* its key was seen: shown already */
+	X2_MAM_QUEUED_SKIPPED     /* archived, in the history the page cap
+	                           * skipped on purpose */
+} X2MamQueued;
+
+/**
+ * Decides what happens to a queued message at the end of a catch-up.
+ *
+ * A seen key is a duplicate.  An offline copy (XEP-0160: delayed, with a
+ * trusted stanza-id) is dropped only after a complete catch-up that ended
+ * on the newest page because of the page cap: it is archived, and showing
+ * it after the newest page would break ordering.  In every other case it
+ * is shown: if the archive delivered it too, the stanza-id dedup already
+ * caught it, so dropping it could only lose it.
+ */
+X2MamQueued x2_mam_queued_fate(gboolean seen, gboolean complete,
+                               gboolean last_page, gboolean delayed,
+                               gboolean has_stanza_id);
+
 /** Parsed <fin/> of a query result. */
 typedef struct {
 	gboolean complete;  /* complete='true': no more pages */

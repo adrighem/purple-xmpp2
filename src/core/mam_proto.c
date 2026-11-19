@@ -248,6 +248,17 @@ child_text(const xmlnode *parent, const char *name)
 	return s;
 }
 
+X2MamQueued
+x2_mam_queued_fate(gboolean seen, gboolean complete, gboolean last_page,
+                   gboolean delayed, gboolean has_stanza_id)
+{
+	if (seen)
+		return X2_MAM_QUEUED_DUPLICATE;
+	if (complete && last_page && delayed && has_stanza_id)
+		return X2_MAM_QUEUED_SKIPPED;
+	return X2_MAM_QUEUED_DELIVER;
+}
+
 gboolean
 x2_mam_fin_parse(const xmlnode *iq, X2MamFin *fin)
 {
