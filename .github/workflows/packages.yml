@@ -51,7 +51,7 @@ jobs:
           version="$(tr -d '[:space:]' < version.txt)"
           date_rfc="$(date -R -d "@$(git log -1 --format=%ct)")"
           cat > debian/changelog <<CHANGELOG
-          purple-xmpp2 (${version}+${{ matrix.suffix }}) unstable; urgency=medium
+          purple-xmpp2 (${version}~${{ matrix.suffix }}) unstable; urgency=medium
 
             * Release ${version}.
 

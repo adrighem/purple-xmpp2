@@ -40,6 +40,9 @@ default (an account option; 0 disables it). An account cloned from an existing
 XMPP account does no history replay: its first sync only records a cursor, so
 you do not get duplicates next to the old plugin's logs.
 
+One-to-one offline and delayed messages are flagged as delayed
+(`PURPLE_MESSAGE_DELAYED`) and show their original timestamp.
+
 Release is gated: v0.1.0 is not published until all v1 milestones pass.
 
 This table is updated as each milestone lands; see

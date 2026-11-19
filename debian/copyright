@@ -12,6 +12,10 @@ Copyright: 1998-2024 the Pidgin, Finch, and libpurple contributors
 License: GPL-2+
 Comment: Forked from libpurple/protocols/jabber in Pidgin 2.14.14.
 
+Files: src/ext/* src/core/* tests/*
+Copyright: 2026 purple-xmpp2 contributors
+License: GPL-2+
+
 Files: tests/integration/harness.c
 Copyright: 1998-2024 the Pidgin, Finch, and libpurple contributors
  2026 Vincent van Adrighem
