@@ -60,6 +60,17 @@ typedef struct {
 	X2Verdict (*inbound)(JabberStream *js, X2Msg *m);
 	void (*outbound)(JabberStream *js, xmlnode *message, X2Out *o);
 	void (*chat_joined)(JabberStream *js, JabberChat *chat);
+	/*
+	 * Start of jabber_close(), while the connection, buddies and chats
+	 * still exist: last chance to deliver queued messages and save state.
+	 * stream_free runs later, after most of JabberStream is gone.
+	 */
+	void (*stream_closing)(JabberStream *js);
+	/*
+	 * The carbons module got the result (or error) of its <enable/> IQ.
+	 * The account MAM catch-up waits for it (ARCHITECTURE 5, 7.1).
+	 */
+	void (*carbons_settled)(JabberStream *js);
 } X2Ext;
 
 /* Dispatchers, called from the inherited code. Safe with no modules. */
@@ -74,14 +85,19 @@ void x2_ext_pre_presence(JabberStream *js);
 void x2_ext_session_ready(JabberStream *js);
 void x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o);
 void x2_ext_chat_joined(JabberStream *js, JabberChat *chat);
+void x2_ext_stream_closing(JabberStream *js);
 
 /**
- * Called by the carbons module once per stream after the carbons enable IQ
- * was answered (result or error), or at once if the server has no carbons.
- * The account-archive MAM query must not start before this (ARCHITECTURE 5,
- * 7.1).
+ * Called by the carbons module once per stream after its <enable/> IQ was
+ * answered (result or error), or at once if the server has no carbons.
+ * Runs the carbons_settled hooks; the account MAM query is sent only
+ * afterwards, so no message falls between catch-up and carbons (ARCHITECTURE
+ * 5, 7.1).  Never calling it is covered by the MAM watchdog.
  */
 void x2_ext_carbons_settled(JabberStream *js);
+
+/** TRUE if a module with this name is in the registry. */
+gboolean x2_ext_registered(const char *name);
 
 /**
  * Runs the inbound hooks of the modules after m->stage (all of them for a

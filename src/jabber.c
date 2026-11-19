@@ -1493,6 +1493,9 @@ void jabber_close(PurpleConnection *gc)
 {
 	JabberStream *js = purple_connection_get_protocol_data(gc);
 
+	/* modules flush queued messages while buddies and chats still exist */
+	x2_ext_stream_closing(js);
+
 	jabber_terminate_transfers(js);
 
 	if ((js->gsc && js->gsc->fd > 0) || js->fd > 0) {
