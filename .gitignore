@@ -2,3 +2,16 @@
 build/
 *.deb
 *.rpm
+*.ddeb
+*.buildinfo
+*.changes
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/purple-xmpp2/
+debian/purple-xmpp2-dbgsym/
+debian/*.log
+obj-*/
+rpmbuild/
+dist/

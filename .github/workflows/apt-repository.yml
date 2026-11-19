@@ -1,0 +1,142 @@
+name: APT repository
+
+# Builds a signed APT repository from the latest stable release's .deb assets
+# and publishes it to GitHub Pages at https://adrighem.github.io/purple-xmpp2/apt/.
+#
+# One-time setup: Pages source "GitHub Actions"; environment "apt-repository"
+# with secrets APT_SIGNING_PRIVATE_KEY and APT_SIGNING_KEY_PASSPHRASE and
+# variable APT_SIGNING_KEY_FINGERPRINT.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: apt-repository-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: apt-repository
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      - name: Check signing configuration
+        id: gate
+        env:
+          APT_SIGNING_PRIVATE_KEY: ${{ secrets.APT_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$APT_SIGNING_PRIVATE_KEY" ]; then
+            echo enabled=true >> "$GITHUB_OUTPUT"
+          else
+            echo enabled=false >> "$GITHUB_OUTPUT"
+            echo "::notice::APT_SIGNING_PRIVATE_KEY is not set; skipping the APT repository."
+          fi
+
+      - if: steps.gate.outputs.enabled == 'true'
+        name: Install APT repository tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            apt-utils dpkg-dev gnupg
+
+      - if: steps.gate.outputs.enabled == 'true'
+        name: Download .deb assets of the latest stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p debs
+          gh release download --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.deb' --dir debs
+          test -n "$(find debs -name '*.deb' -print -quit)"
+
+      - if: steps.gate.outputs.enabled == 'true'
+        name: Build repository tree
+        run: |
+          set -euo pipefail
+          base=https://adrighem.github.io/purple-xmpp2/apt
+          for suite in debian-13 ubuntu-24.04; do
+            pool="site/apt/pool/$suite"
+            bin="site/apt/dists/$suite/main/binary-amd64"
+            mkdir -p "$pool" "$bin"
+            cp debs/*_"${suite}"_amd64.deb "$pool/"
+            (cd site/apt && dpkg-scanpackages --multiversion \
+              "pool/$suite" /dev/null > "dists/$suite/main/binary-amd64/Packages")
+            gzip -9nk "$bin/Packages"
+            apt-ftparchive \
+              -o "APT::FTPArchive::Release::Origin=purple-xmpp2" \
+              -o "APT::FTPArchive::Release::Label=purple-xmpp2" \
+              -o "APT::FTPArchive::Release::Suite=$suite" \
+              -o "APT::FTPArchive::Release::Codename=$suite" \
+              -o "APT::FTPArchive::Release::Architectures=amd64" \
+              -o "APT::FTPArchive::Release::Components=main" \
+              release "site/apt/dists/$suite" > "$RUNNER_TEMP/Release"
+            mv "$RUNNER_TEMP/Release" "site/apt/dists/$suite/Release"
+            cat > "site/apt/purple-xmpp2-$suite.sources" <<SOURCES
+          Types: deb
+          URIs: $base
+          Suites: $suite
+          Components: main
+          Architectures: amd64
+          Signed-By: /etc/apt/keyrings/purple-xmpp2-archive-keyring.gpg
+          SOURCES
+          done
+
+      - if: steps.gate.outputs.enabled == 'true'
+        name: Sign repository
+        env:
+          APT_SIGNING_KEY_FINGERPRINT: ${{ vars.APT_SIGNING_KEY_FINGERPRINT }}
+          APT_SIGNING_PRIVATE_KEY: ${{ secrets.APT_SIGNING_PRIVATE_KEY }}
+          APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$APT_SIGNING_PRIVATE_KEY"
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          install -d -m 0700 "$GNUPGHOME"
+          trap 'gpgconf --kill all || true; rm -rf "$GNUPGHOME"' EXIT
+          printf '%s' "$APT_SIGNING_PRIVATE_KEY" | gpg --batch --quiet --import
+          keyring=site/apt/purple-xmpp2-archive-keyring.gpg
+          gpg --batch --export-options export-minimal \
+            --export "$APT_SIGNING_KEY_FINGERPRINT" > "$keyring"
+          for suite in debian-13 ubuntu-24.04; do
+            release="site/apt/dists/$suite/Release"
+            sign()
+            {
+              printf '%s\n' "$APT_SIGNING_KEY_PASSPHRASE" \
+                | gpg --batch --yes --pinentry-mode loopback \
+                    --passphrase-fd 0 --local-user "$APT_SIGNING_KEY_FINGERPRINT" \
+                    --digest-algo SHA512 "$@"
+            }
+            sign --clearsign --output "${release%Release}InRelease" "$release"
+            sign --armor --detach-sign --output "${release}.gpg" "$release"
+            gpgv --keyring "$keyring" "${release%Release}InRelease"
+          done
+
+      - if: steps.gate.outputs.enabled == 'true'
+        name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      id-token: write
+      pages: write
+    steps:
+      - name: Deploy APT repository to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

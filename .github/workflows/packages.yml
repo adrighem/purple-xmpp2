@@ -1,0 +1,122 @@
+name: Packages
+
+# Reusable: builds .deb (Debian 13, Ubuntu 24.04) and .rpm (Fedora latest) and
+# uploads them as workflow artifacts named packages-<distro>.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  deb:
+    name: deb (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian-13
+            image: debian:13
+          - name: ubuntu-24.04
+            image: ubuntu:24.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install packaging tools
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            build-essential ca-certificates debhelper dpkg-dev fakeroot git \
+            devscripts
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          apt-get build-dep --yes .
+
+      - name: Set package version from version.txt
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version="$(tr -d '[:space:]' < version.txt)"
+          date_rfc="$(date -R -d "@$(git log -1 --format=%ct)")"
+          cat > debian/changelog <<CHANGELOG
+          purple-xmpp2 (${version}-1) unstable; urgency=medium
+
+            * Release ${version}.
+
+           -- Vincent van Adrighem <vincent-git@vanadrighem.eu>  ${date_rfc}
+          CHANGELOG
+          dpkg-parsechangelog --show-field Version
+
+      - name: Build package
+        run: dpkg-buildpackage --build=binary --no-sign
+
+      - name: Collect package
+        run: |
+          mkdir -p dist
+          for f in ../purple-xmpp2_*.deb; do
+            base="$(basename "$f" .deb)"
+            name="${base%_amd64}_${{ matrix.name }}_amd64.deb"
+            cp "$f" "dist/$name"
+          done
+          ls -l dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-${{ matrix.name }}
+          path: dist/*.deb
+          if-no-files-found: error
+
+  rpm:
+    name: rpm (fedora-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: fedora:latest
+    steps:
+      - name: Install packaging tools
+        run: |
+          dnf install --assumeyes --setopt=install_weak_deps=False \
+            dnf-plugins-core git gzip rpm-build tar
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: dnf builddep --assumeyes packaging/rpm/purple-xmpp2.spec
+
+      - name: Build package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version="$(rpmspec -q --qf '%{version}\n' \
+            packaging/rpm/purple-xmpp2.spec | head -n1)"
+          test "$version" = "$(tr -d '[:space:]' < version.txt)"
+          top="$PWD/rpmbuild"
+          mkdir -p "$top/SOURCES"
+          git archive --format=tar.gz --prefix="purple-xmpp2-$version/" \
+            --output="$top/SOURCES/purple-xmpp2-$version.tar.gz" HEAD
+          rpmbuild -bb --define "_topdir $top" \
+            packaging/rpm/purple-xmpp2.spec
+          mkdir -p dist
+          cp "$top"/RPMS/*/purple-xmpp2-*.rpm dist/
+          rm -f dist/*debuginfo* dist/*debugsource*
+          ls -l dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-fedora-latest
+          path: dist/*.rpm
+          if-no-files-found: error

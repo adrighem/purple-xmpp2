@@ -1,0 +1,30 @@
+Source: purple-xmpp2
+Section: net
+Priority: optional
+Maintainer: Vincent van Adrighem <vincent-git@vanadrighem.eu>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake (>= 3.16),
+ libglib2.0-dev (>= 2.28),
+ libidn-dev,
+ libpurple-dev (>= 2.14),
+ libxml2-dev,
+ ninja-build,
+ pkgconf
+Rules-Requires-Root: no
+Standards-Version: 4.7.2
+Homepage: https://github.com/adrighem/purple-xmpp2
+Vcs-Browser: https://github.com/adrighem/purple-xmpp2
+Vcs-Git: https://github.com/adrighem/purple-xmpp2.git
+
+Package: purple-xmpp2
+Architecture: amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: pidgin
+Description: XMPP protocol plugin with message archive catch-up for libpurple 2
+ purple-xmpp2 is a third-party XMPP protocol plugin (prpl-xmpp2) for Pidgin
+ and other libpurple 2 clients. It is forked from the built-in jabber plugin
+ and adds XEP-0313 Message Archive Management so messages received while
+ offline or on other devices appear after connecting, plus message carbons,
+ stream management, HTTP file upload, receipts, chat markers, and message
+ correction. It installs next to the built-in XMPP plugin.

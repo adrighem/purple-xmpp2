@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible purple-xmpp2 problem
+title: "bug: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Never include passwords, tokens, or private message contents. Report
+        security problems privately as described in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: purple-xmpp2 version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Distro, Pidgin and libpurple versions
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: XMPP server software and version
+      placeholder: e.g. Prosody 13.0, ejabberd 25.x
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation
+      options:
+        - Debian 13 APT package
+        - Ubuntu 24.04 APT package
+        - Fedora RPM
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Build or installation
+        - Plugin loading or account setup
+        - Message archive (MAM) catch-up
+        - Carbons
+        - Stream management or reconnect
+        - HTTP file upload
+        - Receipts or chat markers
+        - Message correction
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized debug log
+      description: Output of `pidgin -d` with passwords, tokens, and message bodies removed.
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed passwords, tokens, and private message contents from this report.
+          required: true

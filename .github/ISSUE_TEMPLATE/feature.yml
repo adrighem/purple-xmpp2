@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a protocol feature or improvement
+title: "feat: "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+    validations:
+      required: true
+  - type: input
+    id: xep
+    attributes:
+      label: Related XEP or RFC
+      placeholder: e.g. XEP-0313
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true

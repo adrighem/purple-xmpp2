@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian-13
+            image: debian:13
+            family: debian
+          - name: ubuntu-24.04
+            image: ubuntu:24.04
+            family: debian
+          - name: fedora-latest
+            image: fedora:latest
+            family: fedora
+    env:
+      CFLAGS: "-Werror=implicit-function-declaration"
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install dependencies (Debian family)
+        if: matrix.family == 'debian'
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            build-essential ca-certificates cmake git libglib2.0-dev \
+            libidn-dev libpurple-dev libxml2-dev ninja-build \
+            pkgconf
+
+      - name: Install dependencies (Fedora)
+        if: matrix.family == 'fedora'
+        run: |
+          dnf install --assumeyes --setopt=install_weak_deps=False \
+            cmake gcc git glib2-devel libidn-devel \
+            libpurple-devel libxml2-devel ninja-build pkgconf-pkg-config
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --no-tests=ignore
+
+      - name: Install to a staging directory
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build
+          find stage -name 'libxmpp2.so' | grep -q .
+
+  packages:
+    name: packages
+    uses: ./.github/workflows/packages.yml
