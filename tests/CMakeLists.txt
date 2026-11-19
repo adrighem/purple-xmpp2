@@ -43,3 +43,13 @@ add_test(NAME integration-selftest
 set_tests_properties(integration-selftest PROPERTIES
     LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
     ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")
+
+# M2 carbons
+foreach(carbons_test carbons carbons_off)
+    add_test(NAME integration-${carbons_test}
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh
+            ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_${carbons_test}.sh)
+    set_tests_properties(integration-${carbons_test} PROPERTIES
+        LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
+        ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")
+endforeach()

@@ -321,11 +321,18 @@ in the ring so a later MAM catch-up does not show our own message twice.
 
 ### 7.1 Carbons (XEP-0280)
 
-`server_info`: note `urn:xmpp:carbons:2`. `session_ready`: send
+`server_info`: note `urn:xmpp:carbons:2`, only from our server domain or our
+own bare JID (never from a component). `session_ready`: send
 `<enable/>`. The account-archive MAM query is sent only after the enable IQ
-result (or error) arrives; querying earlier opens a window in which a message
+result (or error) arrives, signalled by `x2_ext_carbons_settled()` (called at
+once when the server has no carbons); querying earlier opens a window in which a message
 from another device is neither in the catch-up nor copied to us. Inbound handled in step 1 above. Sent carbons appear as outgoing
 lines in the right conversation; received carbons appear as normal incoming.
+Validation lives in `core/carbon_parse.c`: outer `from` absent or exactly our
+bare JID, one `<sent/>` or `<received/>`, inner type chat or normal, the
+own-side inner JID is ours (`from` for sent, `to` for received). Failures are
+dropped with the `xmpp2-carbons` line "forged carbon dropped". No carbons
+`<private/>` or `<no-copy/>` is added to our sends.
 No receipts or markers are sent in response to a carbon (the receiving
 device does that).
 

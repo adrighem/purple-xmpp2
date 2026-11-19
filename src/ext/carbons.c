@@ -154,9 +154,13 @@ carbons_inbound(JabberStream *js, X2Msg *m)
 		return X2_CONSUMED;
 	case X2_CARBON_SENT:
 		x2_msg_set_inner(js, m, inner, X2_SRC_CARBON, X2_DIR_OUT, NULL);
+		purple_debug_info(X2_DBG, "sent carbon accepted, peer %s\n",
+		                  m->peer ? m->peer : "-");
 		return X2_PASS;
 	case X2_CARBON_RECEIVED:
 		x2_msg_set_inner(js, m, inner, X2_SRC_CARBON, X2_DIR_IN, NULL);
+		purple_debug_info(X2_DBG, "received carbon accepted, peer %s\n",
+		                  m->peer ? m->peer : "-");
 		return X2_PASS;
 	}
 	return X2_PASS;
