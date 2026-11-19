@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02111-1301  USA
  *
  */
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 #include <libxml/parser.h>
 
@@ -277,7 +277,7 @@ void jabber_parser_process(JabberStream *js, const char *buf, int len)
 		js->context = xmlCreatePushParserCtxt(&jabber_parser_libxml, js, buf, len, NULL);
 		xmlParseChunk(js->context, "", 0, 0);
 	} else if ((ret = xmlParseChunk(js->context, buf, len, 0)) != XML_ERR_OK) {
-		xmlError *err = xmlCtxtGetLastError(js->context);
+		const xmlError *err = xmlCtxtGetLastError(js->context);
 		/*
 		 * libxml2 uses a global setting to determine whether or not to store
 		 * warnings.  Other libraries may set this, which causes err to be

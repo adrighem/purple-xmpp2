@@ -22,7 +22,7 @@
  *
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 #include "blist.h"
 #include "debug.h"

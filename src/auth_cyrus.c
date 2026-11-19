@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02111-1301  USA
  *
  */
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "core.h"
 #include "debug.h"
 #include "request.h"
@@ -187,7 +187,7 @@ static gboolean remove_current_mech(JabberStream *js) {
 			/* Handle removing space before when current_mech isn't the first mech in the list */
 			pos--;
 			len++;
-		} else if (strlen(pos) > len && *(pos + len) == ' ') {
+		} else if (strlen(pos) > (size_t) len && *(pos + len) == ' ') {
 			/* Handle removing space after */
 			len++;
 		}

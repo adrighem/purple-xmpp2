@@ -21,7 +21,7 @@
  *
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "ibb.h"
 #include "debug.h"
 #include "xmlnode.h"

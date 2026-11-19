@@ -21,7 +21,7 @@
  *
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "network.h"
 #include "prefs.h"
 #include "debug.h"

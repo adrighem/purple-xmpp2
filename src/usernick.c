@@ -21,12 +21,12 @@
  *
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 #include "usernick.h"
 #include "pep.h"
 #include <string.h>
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "request.h"
 #include "status.h"
 

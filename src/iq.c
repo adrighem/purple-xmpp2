@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02111-1301  USA
  *
  */
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "core.h"
 #include "debug.h"
 #include "prefs.h"
@@ -234,7 +234,7 @@ static void jabber_iq_version_parse(JabberStream *js, const char *from,
 		const char *ui_name = NULL, *ui_version = NULL;
 #if 0
 		char *os = NULL;
-		if(!purple_prefs_get_bool("/plugins/prpl/jabber/hide_os")) {
+		if(!purple_prefs_get_bool("/plugins/prpl/xmpp2/hide_os")) {
 			struct utsname osinfo;
 
 			uname(&osinfo);

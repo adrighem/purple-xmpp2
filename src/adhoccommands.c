@@ -21,11 +21,11 @@
  *
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 #include "adhoccommands.h"
 #include <string.h>
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "xdata.h"
 #include "iq.h"
 #include "request.h"

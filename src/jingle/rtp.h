@@ -25,7 +25,7 @@
 #ifndef PURPLE_JABBER_JINGLE_RTP_H
 #define PURPLE_JABBER_JINGLE_RTP_H
 
-#include "config.h"
+#include "xmpp2_internal.h"
 
 #ifdef USE_VV
 

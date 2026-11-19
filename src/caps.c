@@ -21,7 +21,7 @@
  *
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 #include "debug.h"
 #include "caps.h"
@@ -31,7 +31,7 @@
 #include "util.h"
 #include "xdata.h"
 
-#define JABBER_CAPS_FILENAME "xmpp-caps.xml"
+#define JABBER_CAPS_FILENAME "xmpp2-caps.xml"
 
 typedef struct _JabberDataFormField {
 	gchar *var;
@@ -956,7 +956,7 @@ void jabber_caps_broadcast_change()
 	for (node = accounts; node; node = node->next) {
 		PurpleAccount *account = node->data;
 		const char *prpl_id = purple_account_get_protocol_id(account);
-		if (purple_strequal("prpl-jabber", prpl_id) && purple_account_is_connected(account)) {
+		if (purple_strequal(XMPP2_PRPL_ID, prpl_id) && purple_account_is_connected(account)) {
 			PurpleConnection *gc = purple_account_get_connection(account);
 			jabber_presence_send(gc->proto_data, TRUE);
 		}

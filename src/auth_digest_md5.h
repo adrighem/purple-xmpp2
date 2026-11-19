@@ -24,7 +24,7 @@
 #ifndef PURPLE_JABBER_AUTH_DIGEST_MD5_H_
 #define PURPLE_JABBER_AUTH_DIGEST_MD5_H_
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 /*
  * Every function in this file is ONLY exposed for tests.

@@ -20,12 +20,12 @@
  *
  */
 
-/* libxmpp is the XMPP protocol plugin. It is linked against libjabbercommon,
- * which may be used to support other protocols (Bonjour) which may need to
- * share code.
+/* libxmpp.c is the plugin entry point of purple-xmpp2 (libxmpp2.so).  Upstream
+ * split the protocol into libjabber.so and a thin libxmpp.so; here everything
+ * is one self-contained module that coexists with the built-in prpl-jabber.
  */
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 
 #include "accountopt.h"
 #include "core.h"
@@ -162,15 +162,15 @@ static PurplePluginInfo info =
 	NULL,                                             /**< dependencies   */
 	PURPLE_PRIORITY_DEFAULT,                            /**< priority       */
 
-	"prpl-jabber",                                    /**< id             */
-	"XMPP",                                           /**< name           */
-	DISPLAY_VERSION,                                  /**< version        */
+	XMPP2_PRPL_ID,                                   /**< id             */
+	"XMPP (xmpp2)",                                  /**< name           */
+	XMPP2_VERSION,                                   /**< version        */
 	                                                  /**  summary        */
 	N_("XMPP Protocol Plugin"),
 	                                                  /**  description    */
 	N_("XMPP Protocol Plugin"),
 	NULL,                                             /**< author         */
-	PURPLE_WEBSITE,                                     /**< homepage       */
+	XMPP2_WEBSITE,                                   /**< homepage       */
 
 	load_plugin,                                      /**< load           */
 	unload_plugin,                                    /**< unload         */
@@ -325,11 +325,11 @@ init_plugin(PurplePlugin *plugin)
 
 	my_protocol = plugin;
 
-	purple_prefs_remove("/plugins/prpl/jabber");
+	purple_prefs_remove("/plugins/prpl/xmpp2");
 
 	purple_signal_connect(purple_get_core(), "uri-handler", plugin,
 		PURPLE_CALLBACK(xmpp_uri_handler), NULL);
 }
 
 
-PURPLE_INIT_PLUGIN(jabber, init_plugin, info);
+PURPLE_INIT_PLUGIN(xmpp2, init_plugin, info);

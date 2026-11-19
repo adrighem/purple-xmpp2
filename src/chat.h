@@ -24,7 +24,7 @@
 #ifndef PURPLE_JABBER_CHAT_H_
 #define PURPLE_JABBER_CHAT_H_
 
-#include "internal.h"
+#include "xmpp2_internal.h"
 #include "connection.h"
 #include "conversation.h"
 #include "request.h"
