@@ -100,8 +100,8 @@ wait_for_line() {
 }
 
 # test_hooks_enabled: the plugin was built with -DXMPP2_TEST_HOOKS=ON (ctest
-# sets XMPP2_TEST_HOOKS_BUILT; export it yourself when running by hand).
-test_hooks_enabled() { [[ "${XMPP2_TEST_HOOKS_BUILT:-0}" == 1 ]]; }
+# sets XMPP2_TEST_HOOKS=1|0; export it yourself when running by hand).
+test_hooks_enabled() { [[ "${XMPP2_TEST_HOOKS:-0}" == 1 ]]; }
 
 pass() { echo "PASS: $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }

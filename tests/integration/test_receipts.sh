@@ -94,7 +94,7 @@ pass "receipt for a roster contact, none for a stranger"
 # 2b. A live request that arrives during the MAM catch-up is answered at
 # once, before mam queues the message (the archive page may show it and drop
 # the live copy). XMPP2_TEST_MAM_STALL keeps the archive SYNCING.
-if [[ "${XMPP2_TEST_HOOKS:-0}" == 1 ]]; then
+if test_hooks_enabled; then
 	peer_bg "$WORK/bob2b.log" bob --stay 1 --do "sleep 4" \
 		--do "sendr alice@localhost sync-b" --do "expect-stanza $RECEIVED"
 	BOB_PID=$PEER_PID

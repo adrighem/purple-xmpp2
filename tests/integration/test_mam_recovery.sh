@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$HERE/lib.sh"
 [[ "$PRPL" == "prpl-xmpp2" ]] || { echo "SKIP: needs PRPL=prpl-xmpp2"; exit 77; }
-[[ "${XMPP2_TEST_HOOKS:-0}" == 1 ]] || { echo "SKIP: needs -DXMPP2_TEST_HOOKS=ON"; exit 77; }
+test_hooks_enabled || { echo "SKIP: needs -DXMPP2_TEST_HOOKS=ON"; exit 77; }
 test_init mam-recovery
 
 HUSERDIR="$WORK/alice-userdir"

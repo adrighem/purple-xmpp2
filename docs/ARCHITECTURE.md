@@ -383,7 +383,7 @@ category `xmpp2-mam`. Test hook (compiled in only with
 `cmake -DXMPP2_TEST_HOOKS=ON`, as in CI; release builds ignore the
 variable): with `XMPP2_TEST_MAM_STALL` set in the environment the query is
 built and logged but never sent, so the watchdog and teardown paths can be
-tested. ctest passes `XMPP2_TEST_HOOKS_BUILT` to the integration tests; the
+tested. ctest passes `XMPP2_TEST_HOOKS=1|0` to every test; the
 stall parts exit 77 (skipped) without it.
 
 Queries (`core/mam_proto.c`): `urn:xmpp:mam:2` form with optional `start`
