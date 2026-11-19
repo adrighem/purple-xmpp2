@@ -104,3 +104,9 @@ Missing tools give exit 77 (skipped).
     ctest --test-dir build -L unit
     ctest --test-dir build -L smoke
     ctest --test-dir build -L integration
+
+Test-only hooks in the plugin (`XMPP2_TEST_MAM_STALL` and the like) exist
+only with `-DXMPP2_TEST_HOOKS=ON` (CI sets it). ctest passes
+`XMPP2_TEST_HOOKS=1|0` to every test; a test that needs the hooks exits 77
+(or skips the step) when it is 0. Run by hand with `XMPP2_TEST_HOOKS=1` on a
+hooks build.

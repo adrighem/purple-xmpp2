@@ -33,8 +33,16 @@ coexists with the built-in XMPP plugin.
 ## Test
 
 ```sh
+cmake -S . -B build -G Ninja -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON
+cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+`-DXMPP2_TEST_HOOKS=ON` compiles test-only switches (environment variables
+such as `XMPP2_TEST_MAM_STALL`) into the plugin; tests that need them are
+skipped (exit 77) without it. It is off by default and must stay off for
+release and distribution builds. `-DXMPP2_SANITIZE=ON` builds with ASan and
+UBSan.
 
 Test layers, fixtures, and how to run the XMPP test server are described in
 [tests/README.md](tests/README.md). Add or update tests for behavior changes.

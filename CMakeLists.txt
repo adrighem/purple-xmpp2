@@ -19,6 +19,9 @@ option(XMPP2_IDN "Use libidn for stringprep (recommended)" ON)
 option(XMPP2_SANITIZE
     "Build with AddressSanitizer and UBSan (for ctest -L unit; the plugin then only loads into a sanitized host)"
     OFF)
+option(XMPP2_TEST_HOOKS
+    "Compile test-only hooks (environment switches used by integration tests; never for release builds)"
+    OFF)
 
 if(XMPP2_SANITIZE)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
@@ -120,6 +123,9 @@ target_compile_features(xmpp2 PRIVATE c_std_11)
 target_compile_definitions(xmpp2 PRIVATE
     PURPLE_PLUGINS
     XMPP2_VERSION="${PROJECT_VERSION}")
+if(XMPP2_TEST_HOOKS)
+    target_compile_definitions(xmpp2 PRIVATE XMPP2_TEST_HOOKS)
+endif()
 # Inherited callbacks have fixed signatures with many unused parameters, and
 # xdata.c calls one callback type through another (works on every ABI we
 # build for); keep both quiet until xdata.c is reworked.
