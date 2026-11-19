@@ -1,0 +1,17 @@
+# Prosody from Debian 13 (trixie): 13.0.x ships mod_mam, mod_carbons,
+# mod_smacks, mod_http_file_share and mod_muc_mam in core.
+FROM docker.io/library/debian:trixie-slim
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      prosody lua-event lua-unbound openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+# Self-signed cert so STARTTLS is offered (clients must accept it).
+RUN openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=localhost \
+      -addext "subjectAltName=DNS:localhost,DNS:conference.localhost,DNS:upload.localhost" \
+      -keyout /etc/prosody/certs/localhost.key -out /etc/prosody/certs/localhost.crt \
+ && chown prosody:prosody /etc/prosody/certs/localhost.* \
+ && chmod 600 /etc/prosody/certs/localhost.key
+COPY prosody.cfg.lua /etc/prosody/prosody.cfg.lua
+USER prosody
+EXPOSE 5222 5269 5280 5281
+CMD ["prosody", "-F"]
