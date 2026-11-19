@@ -27,7 +27,7 @@ the server archive and shows it in the right conversation.
 | HTTP file upload | XEP-0363 | Implemented (M7), falls back to SI file transfer |
 | Delivery receipts | XEP-0184 | Planned |
 | Chat markers | XEP-0333 | Planned |
-| Message correction | XEP-0308 | Planned |
+| Message correction | XEP-0308 | Implemented (M6): corrections shown as a new "corrected:" line, `/correct TEXT` to fix your last message |
 
 Limits for v1: receipts and chat markers are exposed as protocol support,
 signals, and an optional notice line, with no tick icons in the GTK UI. Stream
