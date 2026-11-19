@@ -50,7 +50,10 @@ set(XMPP2_SOURCES
     src/disco.c
     src/ext/carbons.c
     src/ext/ext.c
+    src/ext/mam.c
+    src/ext/mam_sync.c
     src/ext/msgctx.c
+    src/ext/statefile.c
     src/ext/upload.c
     src/ext/upload_xfer.c
     src/ibb.c
@@ -78,8 +81,10 @@ add_library(x2core STATIC
     src/core/carbon_parse.c
     src/core/dedup.c
     src/core/forward.c
+    src/core/mam_proto.c
     src/core/sid.c
     src/core/smstate.c
+    src/core/store.c
     src/core/upload_proto.c)
 set_target_properties(x2core PROPERTIES
     POSITION_INDEPENDENT_CODE ON

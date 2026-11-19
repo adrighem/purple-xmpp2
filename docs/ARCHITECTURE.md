@@ -207,8 +207,21 @@ typedef struct {
     X2Verdict (*inbound)(JabberStream *js, X2Msg *m);
     void (*outbound)(JabberStream *js, xmlnode *message, X2Out *o);
     void (*chat_joined)(JabberStream *js, JabberChat *chat);
+    void (*stream_closing)(JabberStream *js);  /* top of jabber_close() */
+    void (*carbons_settled)(JabberStream *js); /* carbons enable answered */
 } X2Ext;
 ```
+
+`stream_closing` (M3) runs first thing in `jabber_close()`, while buddies,
+chats and the connection still exist: the last moment a module can deliver
+queued messages or save state. `stream_free` runs after most of
+`JabberStream` is gone. `carbons_settled` is dispatched by
+`x2_ext_carbons_settled()`, which the carbons module calls once per stream
+after its enable IQ was answered (result or error), or at once without
+server carbons; the MAM module waits for it when the server offers carbons
+and a module named `carbons` is registered (`x2_ext_registered()`), else it
+queries at `session_ready`. If it never comes, the MAM watchdog sends the
+query anyway after 30 s.
 
 Call sites in upstream code (M1): `jabber_stream_new/free`, the disco chain
 in `disco.c` (server info, then a new own bare-JID `disco#info`, then roster),
@@ -352,7 +365,12 @@ IDLE --start--> SYNCING --fin complete--> LIVE
 ```
 
 Stream teardown in any state flushes the queue to the UI before the
-`JabberStream` is freed.
+`JabberStream` is freed (`stream_closing` hook). Implementation (M3):
+`ext/mam.c` (hooks, result checks, dedup), `ext/mam_sync.c` (this state
+machine), `ext/statefile.c` (9), `core/mam_proto.c`, `core/store.c`. Debug
+category `xmpp2-mam`. Test hook: with `XMPP2_TEST_MAM_STALL` set in the
+environment the query is built and logged but never sent, so the watchdog
+and teardown paths can be tested.
 
 Queries (`core/mam_proto.c`): `urn:xmpp:mam:2` form with optional `start`
 and `with`, RSM `<max>` 100 and `<after>`/`<before/>`. Page responses are
@@ -375,6 +393,25 @@ Account archive, after the carbons enable result (follows Gajim's `mam.py`):
 - `item-not-found` (cursor pruned from the archive): retry once with
   `start=cursor_ts`, skipping any result whose id equals the old cursor
   (the `start` bound is inclusive), else apply the first-run rule.
+- Empty first page after a cursor: Prosody's internal storage answers an
+  unknown `after` id with an empty, complete page instead of
+  `item-not-found`. When the account advertises `urn:xmpp:mam:2#extended`,
+  an empty first page triggers a probe (`ids=<cursor>`, `max=1`, results not
+  shown); cursor not found means the same retry as `item-not-found`. Known
+  limit: when the cursor id is corrupt rather than pruned, the message at
+  `cursor_ts` itself can show once more (its real id differs from the stored
+  one).
+- Offline storage (XEP-0160) overlap: after a complete catch-up that covered
+  the range (results came back, the cursor was found, or a `start` query),
+  queued messages that are delayed and carry a trusted stanza-id are
+  dropped: they are archived, so they were shown from the archive or lie in
+  the part the page cap skipped on purpose (showing them after the newest
+  page would break ordering). Not after a cursor-only sync, where the
+  offline copy is the only way the message is shown.
+- Incomplete catch-up (error, watchdog, teardown): the cursor is frozen for
+  the rest of the session, live messages no longer move it, so the next
+  login fetches the gap again (live messages of this session may then show
+  twice: a duplicate beats a lost message).
 
 Rooms (M4), on join: disco#info the room before sending the join presence
 (cached per stream; Gajim does the same). If the room advertises

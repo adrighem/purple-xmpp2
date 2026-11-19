@@ -24,11 +24,13 @@ extern const X2Ext *const X2_EXT_TEST_TABLE[];
 #define x2_exts X2_EXT_TEST_TABLE
 #else
 extern const X2Ext x2_ext_carbons;
+extern const X2Ext x2_ext_mam;
 extern const X2Ext x2_ext_upload;
 /* ... one line per module */
 
 static const X2Ext *const x2_exts[] = {
 	&x2_ext_carbons,
+	&x2_ext_mam,
 	&x2_ext_upload,
 	/* ... */
 	NULL
@@ -235,18 +237,6 @@ x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 			e->outbound(js, message, o);
 }
 
-/*
- * Ordering contract between carbons (M2) and MAM (M3): called once per
- * stream after the carbons enable IQ was answered (result or error), or at
- * once when the server has no carbons.  M3 replaces this stub with the start
- * of the account-archive catch-up.
- */
-void
-x2_ext_carbons_settled(JabberStream *js)
-{
-	purple_debug_info("xmpp2", "hook carbons_settled\n");
-}
-
 void
 x2_ext_chat_joined(JabberStream *js, JabberChat *chat)
 {
@@ -255,6 +245,44 @@ x2_ext_chat_joined(JabberStream *js, JabberChat *chat)
 	FOR_EACH_EXT(e)
 		if (e->chat_joined)
 			e->chat_joined(js, chat);
+}
+
+void
+x2_ext_stream_closing(JabberStream *js)
+{
+	const X2Ext *e;
+
+	g_return_if_fail(js != NULL);
+	if (js->x2 == NULL)
+		return;
+
+	FOR_EACH_EXT(e)
+		if (e->stream_closing)
+			e->stream_closing(js);
+}
+
+void
+x2_ext_carbons_settled(JabberStream *js)
+{
+	const X2Ext *e;
+
+	g_return_if_fail(js != NULL && js->x2 != NULL);
+
+	purple_debug_info("xmpp2", "hook carbons_settled\n");
+	FOR_EACH_EXT(e)
+		if (e->carbons_settled)
+			e->carbons_settled(js);
+}
+
+gboolean
+x2_ext_registered(const char *name)
+{
+	const X2Ext *e;
+
+	FOR_EACH_EXT(e)
+		if (purple_strequal(e->name, name))
+			return TRUE;
+	return FALSE;
 }
 
 void
