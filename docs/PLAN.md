@@ -136,6 +136,15 @@ build, `test-msgctx` clean under valgrind.
 
 ## M2: carbons (XEP-0280)
 
+Status: done. `ext/carbons.c`, `core/carbon_parse.c`; unit tests
+`test_carbon_parse` (forged cases 1 to 3) and `test_carbons` (module in the
+real pipeline); integration `test_carbons.sh` and `test_carbons_off.sh`.
+Cases 2 and 3 are unit-only: a peer cannot forge the outer `from`. The
+module calls `x2_ext_carbons_settled()` once per stream (ext.c holds a no-op
+stub until M3 replaces it). No carbons private/no-copy hint is added to our
+sends: ARCHITECTURE specifies none and the prpl cannot know that a message
+is, say, end-to-end encrypted.
+
 Acceptance:
 - Harness online, peer `alice/phone` sends "c1" to bob: harness shows
   `EV sent conv=bob@localhost flags` containing `REMOTE_SEND`, text "c1",

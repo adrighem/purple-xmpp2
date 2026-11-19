@@ -23,10 +23,12 @@
 extern const X2Ext *const X2_EXT_TEST_TABLE[];
 #define x2_exts X2_EXT_TEST_TABLE
 #else
-/* extern const X2Ext x2_ext_carbons; ... one line per module */
+extern const X2Ext x2_ext_carbons;
+/* ... one line per module */
 
 static const X2Ext *const x2_exts[] = {
-	/* &x2_ext_carbons, ... */
+	&x2_ext_carbons,
+	/* ... */
 	NULL
 };
 
@@ -229,6 +231,18 @@ x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 	FOR_EACH_EXT(e)
 		if (e->outbound)
 			e->outbound(js, message, o);
+}
+
+/*
+ * Ordering contract between carbons (M2) and MAM (M3): called once per
+ * stream after the carbons enable IQ was answered (result or error), or at
+ * once when the server has no carbons.  M3 replaces this stub with the start
+ * of the account-archive catch-up.
+ */
+void
+x2_ext_carbons_settled(JabberStream *js)
+{
+	purple_debug_info("xmpp2", "hook carbons_settled\n");
 }
 
 void

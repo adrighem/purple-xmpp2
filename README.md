@@ -22,7 +22,7 @@ the server archive and shows it in the right conversation.
 | --- | --- | --- |
 | Everything the built-in XMPP plugin does | | Inherited (forked from Pidgin 2.14.14) |
 | Message archive catch-up | XEP-0313 | Planned (headline feature) |
-| Message carbons | XEP-0280 | Planned |
+| Message carbons | XEP-0280 | Implemented (M2) |
 | Stream management | XEP-0198 | Planned |
 | HTTP file upload | XEP-0363 | Planned |
 | Delivery receipts | XEP-0184 | Planned |

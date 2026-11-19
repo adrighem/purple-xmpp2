@@ -48,6 +48,7 @@ set(XMPP2_SOURCES
     src/chat.c
     src/data.c
     src/disco.c
+    src/ext/carbons.c
     src/ext/ext.c
     src/ext/msgctx.c
     src/ibb.c
@@ -72,6 +73,7 @@ set(XMPP2_SOURCES
 
 # Pure protocol logic (glib + xmlnode only), shared with the unit tests.
 add_library(x2core STATIC
+    src/core/carbon_parse.c
     src/core/dedup.c
     src/core/forward.c
     src/core/sid.c)

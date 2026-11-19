@@ -76,6 +76,14 @@ void x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o);
 void x2_ext_chat_joined(JabberStream *js, JabberChat *chat);
 
 /**
+ * Called by the carbons module once per stream after the carbons enable IQ
+ * was answered (result or error), or at once if the server has no carbons.
+ * The account-archive MAM query must not start before this (ARCHITECTURE 5,
+ * 7.1).
+ */
+void x2_ext_carbons_settled(JabberStream *js);
+
+/**
  * Runs the inbound hooks of the modules after m->stage (all of them for a
  * new context) and records in m->stage the module that is running, so a
  * module can x2_msg_dup() the context and later resume after itself.
