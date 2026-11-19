@@ -35,19 +35,29 @@ coexists with the built-in XMPP plugin.
 ```sh
 cmake -S . -B build -G Ninja -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON
 cmake --build build
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -L unit           # fast, no external tools
+ctest --test-dir build -L smoke          # Pidgin under Xvfb
+ctest --test-dir build -L integration    # needs podman and python3-venv
 ```
 
-`-DXMPP2_TEST_HOOKS=ON` compiles test-only switches (environment variables
-such as `XMPP2_TEST_MAM_STALL`) into the plugin; tests that need them are
-skipped (exit 77) without it. It is off by default and must stay off for
-release and distribution builds. `-DXMPP2_SANITIZE=ON` builds with ASan and
-UBSan.
-
-Test layers, fixtures, and how to run the XMPP test server are described in
+Tests exit 77 (skipped) when a prerequisite such as podman, Xvfb, or Pidgin is
+missing. Layers, fixtures, and the Prosody test server are described in
 [tests/README.md](tests/README.md). Add or update tests for behavior changes.
-Never put real JIDs, passwords, or message contents in tests, fixtures, logs, or
-issues.
+
+CMake options for development:
+
+- `XMPP2_TEST_HOOKS=ON` compiles test-only hooks (environment switches such as
+  `XMPP2_TEST_MAM_STALL`) that some integration tests need. CI uses it. Never
+  use it for release or distro packages; the package builds leave it off.
+- `XMPP2_SANITIZE=ON` builds with AddressSanitizer and UBSan. Use it for
+  `ctest -L unit`; the sanitized plugin only loads into a sanitized host.
+- `XMPP2_WERROR=ON` turns warnings into errors.
+
+Several suites on one host restart each other's test server. Give each its own:
+`XMPP2_TEST_CONTAINER=name XMPP2_TEST_C2S_PORT=N XMPP2_TEST_HTTP_PORT=M`, plus
+`XMPP2_SERVER_PROFILE=full|nocarbons|nomam|noupload` to switch server features
+and `XMPP2_KEEP_SERVER=1` to leave the server running. Never put real JIDs,
+passwords, or message contents in tests, fixtures, logs, or issues.
 
 ## Keeping the upstream diff clean
 

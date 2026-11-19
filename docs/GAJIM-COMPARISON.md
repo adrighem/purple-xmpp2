@@ -2,21 +2,21 @@
 
 Gajim column based on Gajim master `src/gajim/common/modules/` (checked
 2026-11, e.g. `mam.py`, `carbons.py`, `receipts.py`, `chat_markers.py`,
-`mds.py`, `httpupload.py`, `omemo.py`). Target: `v1`, `later`, `never`,
+`mds.py`, `httpupload.py`, `omemo.py`). Target: `done`, `v0.2`, `later`, `never`,
 or `have` (inherited, kept).
 
 | Feature | XEP | Pidgin 2.14 | Gajim | purple-xmpp2 |
 |---|---|---|---|---|
-| Message archive catch-up, 1:1 | 0313 | no | yes | v1 |
-| Message archive catch-up, MUC | 0313 | no (legacy history replayed on every join) | yes | v1 |
-| Unique and stable stanza ids, dedup | 0359 | no | yes | v1 |
-| Message carbons | 0280 | no (third-party plugin) | yes | v1 |
-| Stream management, acks | 0198 | partial (acks, no resume, bugs) | yes | v1 (fixed) |
-| Stream management, resumption | 0198 | no | yes | v1 (M10, silent reconnect) |
-| HTTP file upload | 0363 | no | yes | v1 |
-| Delivery receipts | 0184 | no | yes | v1 (protocol; no ticks UI) |
-| Chat markers | 0333 | no | yes | v1 (1:1, displayed) |
-| Last message correction | 0308 | no | yes | v1 (receive, `/correct`) |
+| Message archive catch-up, 1:1 | 0313 | no | yes | done (v0.1.0) |
+| Message archive catch-up, MUC | 0313 | no (legacy history replayed on every join) | yes | done (v0.1.0) |
+| Unique and stable stanza ids, dedup | 0359 | no | yes | done (v0.1.0) |
+| Message carbons | 0280 | no (third-party plugin) | yes | done (v0.1.0) |
+| Stream management, acks | 0198 | partial (acks, no resume, bugs) | yes | done (v0.1.0: batched acks, no blind resend, unacked reported) |
+| Stream management, resumption | 0198 | no | yes | v0.2 (M10, silent reconnect) |
+| HTTP file upload | 0363 | no | yes | done (v0.1.0; https by default, whole file in memory) |
+| Delivery receipts | 0184 | no | yes | done (v0.1.0: protocol, signal, optional notice; no ticks UI) |
+| Chat markers | 0333 | no | yes | done (v0.1.0: 1:1, displayed on focus) |
+| Last message correction | 0308 | no | yes | done (v0.1.0: receive as "corrected:" line, `/correct`) |
 | Displayed sync across devices | 0490 | no | yes | later |
 | Message retraction | 0424 | no | yes | later |
 | Moderation (MUC) | 0425 | no | yes | later |
@@ -41,7 +41,7 @@ or `have` (inherited, kept).
 | Attention (buzz) | 0224 | yes | no | have |
 | SI file transfer (S5B, IBB) | 0096, 0065, 0047 | yes | Jingle FT only | have (fallback; removal candidate) |
 | Jingle file transfer | 0234 | no | yes | later |
-| OMEMO encryption | 0384 | no (lurch plugin) | yes | later (out of v1 scope) |
+| OMEMO encryption | 0384 | no (lurch plugin) | yes | later (evaluate in v0.2) |
 | OpenPGP | 0027, 0373 | no | 0373 yes | never (0027 obsolete) |
 | Jingle audio/video | 0166/0167 | yes (no DTLS-SRTP) | yes | never in this plugin (GType clash, no interop; use prpl-jabber) |
 | BOSH | 0124, 0206 | yes | no | never (dropped) |

@@ -1,12 +1,13 @@
 # purple-xmpp2
 
 > [!WARNING]
-> **Early development.** Nothing below marked "planned" works yet. This is an
-> unofficial third-party plugin and is not part of Pidgin.
+> **Early development (v0.1.0 candidate).** This is an unofficial third-party
+> plugin and is not part of Pidgin.
 
-`purple-xmpp2` is an XMPP protocol plugin (`prpl-xmpp2`) for Pidgin 2.14 and
-other libpurple 2 clients. It is forked from Pidgin's built-in jabber plugin
-and adds the modern XMPP features the built-in plugin lacks.
+`purple-xmpp2` is an XMPP protocol plugin (`prpl-xmpp2`, shown as **XMPP
+(xmpp2)**) for Pidgin 2.14 and other libpurple 2 clients. It is forked from
+Pidgin's built-in jabber plugin and adds the modern XMPP features the built-in
+plugin lacks.
 
 ## Why
 
@@ -14,42 +15,73 @@ The built-in XMPP plugin only shows messages that arrive while you are online
 and connected. Messages sent while Pidgin was closed, or delivered to your phone
 or another client, never appear. purple-xmpp2 fixes that with **XEP-0313
 Message Archive Management (MAM)**: on connect it fetches what you missed from
-the server archive and shows it in the right conversation.
+the server archive and shows it in the right conversation, in order, once.
 
 ## Features
 
-| Feature | XEP | Status |
+| Feature | XEP | Status in v0.1.0 |
 | --- | --- | --- |
-| Everything the built-in XMPP plugin does | | Inherited (forked from Pidgin 2.14.14) |
-| Message archive catch-up | XEP-0313 | Implemented for 1:1 (M3) and rooms (M4): offline and other-device messages on login, room history on join from the room archive instead of replayed legacy history; original times, in order, once |
-| Message carbons | XEP-0280 | Implemented (M2) |
-| Stream management | XEP-0198 | Batched acks; unacked messages reported on connection loss (resumption planned) |
-| HTTP file upload | XEP-0363 | Implemented (M7), falls back to SI file transfer |
-| Delivery receipts | XEP-0184 | Implemented (M5), signal `xmpp2-receipt` and optional notice |
-| Chat markers | XEP-0333 | Implemented (M5), `displayed` sent on focus, signal `xmpp2-marker` |
-| Message correction | XEP-0308 | Implemented (M6): corrections shown as a new "corrected:" line, `/correct TEXT` to fix your last message |
-| Account migration from the built-in XMPP plugin | | Implemented (M8): copies accounts, buddy list and room bookmarks, see Using it |
+| Everything the built-in XMPP plugin does, except the dropped parts below | | Inherited (forked from Pidgin 2.14.14) |
+| Message archive catch-up | XEP-0313 | 1:1 chats and group chats. Offline and other-device messages appear on login with their original time; room history on join comes from the room archive instead of replayed legacy history |
+| Message carbons | XEP-0280 | Messages you send or receive on other devices show up here |
+| Stream management | XEP-0198 | Batched acks, no blind resend of unacked messages; unacked messages are reported when the connection drops. No resumption yet |
+| HTTP file upload | XEP-0363 | Used for sending files; falls back to SI file transfer when the server has no upload service |
+| Delivery receipts | XEP-0184 | Sent and received; optional notice line, signal `xmpp2-receipt` |
+| Chat markers | XEP-0333 | 1:1 chats: `displayed` is sent when you focus the conversation; signal `xmpp2-marker` |
+| Message correction | XEP-0308 | Corrections show as a new "corrected:" line; `/correct TEXT` fixes your last message |
+| Account migration from the built-in plugin | | Copies accounts, buddy list and room bookmarks |
 
-Limits for v1: receipts and chat markers are exposed as protocol support,
-signals (`xmpp2-receipt`, `xmpp2-marker`), and an optional notice line (account
-option "Show delivery and read notices", default off), with no tick icons in the GTK UI. Stream
-resumption is best effort and may slip to v0.2. Google Talk extensions, Jingle
-(voice and video), BOSH, Cyrus SASL, and DIGEST-MD5 are dropped. Requires
-libpurple 2.14.12 or newer.
+### How offline messages work
 
-On first connect, a new XMPP2 account fetches the last day of the archive by
-default (an account option; 0 disables it). An account cloned from an existing
-XMPP account does no history replay: its first sync only records a cursor, so
-you do not get duplicates next to the old plugin's logs.
-
+On connect, the plugin asks the server archive for everything newer than the
+last message it saw, then shows those messages with their original timestamps.
 One-to-one offline and delayed messages are flagged as delayed
-(`PURPLE_MESSAGE_DELAYED`) and show their original timestamp.
+(`PURPLE_MESSAGE_DELAYED`). Duplicates (a message seen live, via a carbon, and
+via the archive) are removed using the server's stable ids.
 
-Release is gated: v0.1.0 is not published until all v1 milestones pass.
+A new XMPP2 account has no stored position, so its first sync fetches the last
+`mam_initial_days` days (default 1, set 0 to fetch nothing and just record the
+position). An account migrated from the built-in plugin does no history replay:
+its first sync only records a position, so you get no duplicates next to the old
+plugin's logs. Joining a room fetches only what you missed; if the stored
+position is older than `mam_muc_threshold_days` (default 2) or missing, only the
+latest page of the room archive is fetched. Large catch-ups are capped per
+login, with a notice in the conversation.
 
-This table is updated as each milestone lands; see
-[docs/PLAN.md](docs/PLAN.md) for the schedule and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
+Your server must support MAM (Prosody `mod_mam`, ejabberd `mod_mam`, and so on).
+Without it the plugin behaves like the built-in one.
+
+### Account options
+
+Beyond the usual XMPP options (connection security, port, connect server, file
+transfer proxies, custom smileys), the Advanced tab has:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| Days of history to fetch on first login | 1 | `mam_initial_days`; 0 means none |
+| Days a room's history position stays valid | 2 | `mam_muc_threshold_days` |
+| Show delivery and read notices | off | Prints "Message delivered." style lines in the conversation |
+| Allow unencrypted file upload | off | `allow_plain_http_upload`; permits `http://` upload slots |
+
+### Limitations
+
+- No stream resumption. After a network drop Pidgin reconnects normally and MAM
+  fills the gap (planned for v0.2).
+- Receipts and markers have no tick icons in the GTK UI. They are shown only as
+  the optional notice line and as signals for plugins.
+- A corrected message appears as a new line, not an in-place edit.
+- File upload needs a server with XEP-0363 over `https` (or the opt-in above).
+  The whole file is read into memory, there is no progress bar, and the server's
+  size limit is checked before sending.
+- No OMEMO or other end-to-end encryption, no message retraction, reactions, or
+  replies yet.
+- Dropped from the fork: Google Talk extensions, Jingle (voice and video), BOSH,
+  Cyrus SASL, and DIGEST-MD5. Use the built-in plugin if you need them.
+- Requires libpurple 2.14.12 or newer.
+
+See [docs/PLAN.md](docs/PLAN.md) for the roadmap,
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design, and
+[docs/GAJIM-COMPARISON.md](docs/GAJIM-COMPARISON.md) for the feature gap.
 
 ## Install
 
@@ -91,26 +123,18 @@ look for **XMPP2** under Accounts, Manage Accounts, Add.
 
 ### Migrating an existing XMPP account
 
-Every connected XMPP2 account has an action under Accounts: **Copy XMPP
-accounts to xmpp2...**. In Pidgin the plugin also offers the same copy once
-at startup, when it finds XMPP accounts without an XMPP2 twin: **Copy**
-does it, **Not now** asks again next start, **Never** switches the offer
-off for good (the action stays).
+In Pidgin, the plugin offers to copy your built-in XMPP accounts to XMPP (xmpp2)
+when it loads (choose "Copy", "Not now", or "Never"). Other libpurple clients do
+not get this offer. In every client you can run it later from the account's
+action menu: **Copy XMPP accounts to xmpp2...**.
 
-The copy takes the username (with resource), the saved password, alias, user
-info, buddy icon, proxy settings, every account option both plugins have
-(connection security, port, connect server, file transfer proxies and so on),
-the buddy list entries (groups, contacts, local aliases) and the room
-bookmarks, including auto-join. The original is kept but **disabled**, so
-two sessions with the same resource never fight; the copy is enabled only if
-the original was. Nothing is deleted, and running it again copies nothing
-that already has a twin (same username).
-
-The copy starts from the current point in the archive and replays no history,
-and it writes to the same `logs/jabber/<user>/` directory, so the history
-viewer shows one continuous history. Not copied: buddy notes, pounces, and
-contacts merged across several accounts. A password that was not saved is
-not saved on the copy either, you are asked at first login.
+The copy takes the account settings, buddy list entries and room bookmarks. The
+originals are kept but disabled (a disabled original stays disabled in the
+copy). The copy replays no history, as described above. Passwords are copied
+only if they are saved. You can also add an **XMPP (xmpp2)** account by hand with
+the same username, domain, and password. Do not run both accounts at once: two
+sessions with the same resource conflict, so give the new account a different
+resource.
 
 ### Coexistence with built-in XMPP
 

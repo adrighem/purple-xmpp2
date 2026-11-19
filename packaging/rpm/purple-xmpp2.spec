@@ -29,7 +29,7 @@ correction. It installs next to the built-in XMPP plugin.
 %autosetup
 
 %build
-%cmake -G Ninja -DBUILD_TESTING=OFF
+%cmake -G Ninja -DBUILD_TESTING=OFF -DXMPP2_TEST_HOOKS=OFF
 %cmake_build
 
 %install

@@ -10,7 +10,8 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 		-DCMAKE_INSTALL_PREFIX=/usr \
-		-DBUILD_TESTING=OFF
+		-DBUILD_TESTING=OFF \
+		-DXMPP2_TEST_HOOKS=OFF
 
 # Tests run in CI; the package build does not need them.
 override_dh_auto_test:

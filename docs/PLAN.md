@@ -55,7 +55,7 @@ Wave-2 ownership:
 | M9 | `stream_management.c/.h` | none |
 | M11 | `debian/`, `packaging/`, `.github/`, `README.md` install section | none |
 
-## M0: scaffold builds and loads (in progress)
+## M0: scaffold builds and loads (done)
 
 Scope: CMake build, `xmpp2_internal.h`, id/name/prefs/caps-file/cmd
 renames, `-fvisibility=hidden`, smoke and baseline harness.
@@ -71,7 +71,7 @@ Acceptance:
 - A prpl-jabber account and an xmpp2 account (different JIDs) are connected
   at the same time in one Pidgin; both exchange messages.
 
-## M1: prune and hook layer (single owner)
+## M1: prune and hook layer (single owner) (done)
 
 Scope (ARCHITECTURE 3, 5, 6):
 - Delete `google/`, `jingle/`, `bosh.c`, `auth_cyrus.c`, `auth_digest_md5.c`
@@ -120,7 +120,7 @@ Acceptance:
   no key; the stanza `@id` is never a key (M1.1).
 - `make`-time warning count does not increase versus M0.
 
-## M1.1: review hardening (before wave 2)
+## M1.1: review hardening (before wave 2) (done)
 
 Scope (ARCHITECTURE 1.2, 5, 6, 7.3): `server_info` only for trusted disco
 sources (own domain, own server items, own bare JID; `account_info` folded
@@ -134,7 +134,7 @@ context only; SPDX headers on new files; `XMPP2_SANITIZE` CMake option.
 Acceptance: `ctest -L unit` green on a normal and on an `XMPP2_SANITIZE=ON`
 build, `test-msgctx` clean under valgrind.
 
-## M2: carbons (XEP-0280)
+## M2: carbons (XEP-0280) (done)
 
 Status: done. `ext/carbons.c`, `core/carbon_parse.c`; unit tests
 `test_carbon_parse` (forged cases 1 to 3) and `test_carbons` (module in the
@@ -163,7 +163,7 @@ Acceptance:
 - Server without carbons (disable `mod_carbons` via a test config switch):
   login succeeds, no enable IQ sent.
 
-## M3: MAM catch-up for the account archive (XEP-0313)
+## M3: MAM catch-up for the account archive (XEP-0313) (done)
 
 Status: done. `ext/mam.c`, `ext/mam_sync.c`, `ext/statefile.c`,
 `core/mam_proto.c`, `core/store.c`; new hooks `stream_closing` and
@@ -223,7 +223,7 @@ Acceptance (all with persistent `--userdir`):
   `<fin>` parsing incl. missing `<last>`, `store` round-trip, atomic write,
   corrupt file yields empty state plus a warning.
 
-## M4: MAM for rooms
+## M4: MAM for rooms (done)
 
 Status: done. `ext/mam_muc.c` (new), `ext/mam.c` and `ext/mam_sync.c`
 refactored to one `X2MamArchive` per archive (account and each joined
@@ -290,7 +290,7 @@ Acceptance:
   line); with the notices option on, one system line, not logged.
 - Caps advertise both namespaces (peer `disco`).
 
-## M6: message correction (XEP-0308) (implemented)
+## M6: message correction (XEP-0308) (done)
 
 Status: implemented (ARCHITECTURE 7.6). Tests: `tests/unit/test_replace.c`
 (element parse/build, sender identity, marking, bounded log) and
@@ -309,7 +309,7 @@ Acceptance:
   `<replace id=...>` equal to the id of the harness's previous message.
 - Caps advertise `urn:xmpp:message-correct:0`.
 
-## M7: HTTP File Upload (XEP-0363) (implemented)
+## M7: HTTP File Upload (XEP-0363) (done)
 
 Acceptance:
 - `upload bob@localhost /path/file.png` (1 MiB): xfer completes; peer
@@ -386,7 +386,7 @@ Acceptance:
   exactly once (with MAM), and no stale IQ or presence is resent.
 - `<failed h='N'>` trims exactly N stanzas (debug log).
 
-## M10: silent reconnect with resumption
+## M10: silent reconnect with resumption (deferred to v0.2)
 
 Acceptance:
 - Drop the TCP connection for 5 s while connected: the account never shows
@@ -397,7 +397,7 @@ Acceptance:
 - Messages typed during the gap are delivered once after resume.
 - All earlier integration tests still pass.
 
-## M11: packaging and CI
+## M11: packaging and CI (done, pending first release)
 
 Acceptance:
 - `dpkg-buildpackage -us -uc` on Debian 13 and Ubuntu 24.04 produces a
@@ -408,7 +408,7 @@ Acceptance:
   integration suite on Debian 13 with the Prosody container, release-please
   with `include-commit-authors`.
 
-## M12: v1 release
+## M12: v0.1.0 release (M1 to M9)
 
 Acceptance:
 - All milestone acceptance tests green in CI.
@@ -441,3 +441,17 @@ Acceptance:
 - Target libpurple >= 2.14.12 (Ubuntu 24.04).
 - No release PR is merged until every v1 milestone has passed QA; the tech
   lead gates the merge.
+- M10 (stream resumption) is deferred to v0.2. v0.1.0 is M1 to M9, plus M11
+  packaging and M12 release. MAM catch-up already covers reconnects.
+
+## v0.2 backlog
+
+- M10: stream resumption as a silent reconnect (XEP-0198 `resume`).
+- OMEMO evaluation (XEP-0384), for example through the existing lurch plugin
+  or a native module.
+- Streaming HTTP upload from disk with progress (v0.1.0 reads the file into
+  memory).
+- A GTK plugin that draws receipt and marker ticks from the `xmpp2-receipt`
+  and `xmpp2-marker` signals.
+- Later XEPs: displayed sync (0490), retraction (0424), reactions (0444),
+  replies (0461), bookmarks 2 (0402), client state indication (0352).
