@@ -23,6 +23,9 @@
  * Session:
  *   connect [SECS]            enable the account, wait for sign-on (20)
  *   disconnect                disable the account and wait for sign-off
+ *   drop                      shutdown() every TCP socket of ours connected to
+ *                             --port (no stream close, like a network drop);
+ *                             the prpl then sees a connection error
  *   sleep SECS
  *   pref s:NAME=V|i:NAME=N|b:NAME=0|1   set an account pref now
  *   buddy-add JID             add to the roster and subscribe
@@ -72,6 +75,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 
 #include "purple.h"
 
@@ -684,6 +691,36 @@ static int logcount(const char *userdir, const char *jid, const char *text)
 }
 
 static const char *userdir_path;
+static int c2s_port;
+
+/* Shuts down our TCP sockets whose peer port is the c2s port. */
+static int drop_c2s_sockets(void)
+{
+	GDir *d = g_dir_open("/proc/self/fd", 0, NULL);
+	const char *name;
+	int n = 0;
+
+	while (d && (name = g_dir_read_name(d))) {
+		int fd = atoi(name);
+		struct sockaddr_storage sa;
+		socklen_t len = sizeof(sa);
+		struct stat st;
+		int port = -1;
+
+		if (fstat(fd, &st) != 0 || !S_ISSOCK(st.st_mode) ||
+		    getpeername(fd, (struct sockaddr *)&sa, &len) != 0)
+			continue;
+		if (sa.ss_family == AF_INET)
+			port = ntohs(((struct sockaddr_in *)&sa)->sin_port);
+		else if (sa.ss_family == AF_INET6)
+			port = ntohs(((struct sockaddr_in6 *)&sa)->sin6_port);
+		if (port == c2s_port && shutdown(fd, SHUT_RDWR) == 0)
+			n++;
+	}
+	if (d)
+		g_dir_close(d);
+	return n;
+}
 
 static void set_pref(PurpleAccount *acct, const char *spec)
 {
@@ -822,6 +859,20 @@ static void do_command(char *line)
 		}
 		purple_account_set_enabled(account, UI_ID, FALSE);
 		purple_account_disconnect(account);
+	} else if (!strcmp(cmd, "drop")) {
+		int n;
+		char *m;
+
+		if (!need_online("drop"))
+			return;
+		n = drop_c2s_sockets();
+		if (n == 0) {
+			fail_now("drop", "no socket connected to the c2s port");
+			return;
+		}
+		m = g_strdup_printf("%d socket(s)", n);
+		continue_ok("drop", m);
+		g_free(m);
 	} else if (!strcmp(cmd, "sleep")) {
 		arm(P_SLEEP, "sleep", atof(arg));
 	} else if (!strcmp(cmd, "quit")) {
@@ -1090,6 +1141,8 @@ int main(int argc, char **argv)
 	}
 
 	signal(SIGCHLD, SIG_IGN);
+	/* writes to a dropped socket must fail with EPIPE, not kill us */
+	signal(SIGPIPE, SIG_IGN);
 	out = fdopen(dup(STDOUT_FILENO), "w");
 	dup2(STDERR_FILENO, STDOUT_FILENO);
 	evs = g_ptr_array_new();
@@ -1157,6 +1210,7 @@ int main(int argc, char **argv)
 		purple_account_set_string(account, "connect_server", host);
 	if (port)
 		purple_account_set_int(account, "port", port);
+	c2s_port = port ? port : 5222;
 	for (i = 0; i < (int)prefs->len; i++)
 		set_pref(account, g_ptr_array_index(prefs, i));
 

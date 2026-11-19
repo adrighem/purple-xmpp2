@@ -252,10 +252,7 @@ struct _JabberStream
 	/* State of the xmpp2 feature modules, see ext/x2stream.h */
 	X2Stream *x2;
 
-	/* XEP-0198 (stream management) state */
-	guint32 sm_outbound_count;
-	guint32 sm_inbound_count;
-	guint32 sm_outbound_confirmed;
+	/* XEP-0198 negotiation state; counters and queue: stream_management.c */
 	JabberStreamManagementState sm_state;
 };
 

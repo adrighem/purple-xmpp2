@@ -159,6 +159,7 @@ src/
     carbon_parse.c      classify carbon, reject forged
     mam_proto.c         build query (form + RSM), parse <result>, <fin>
     dedup.c             bounded LRU set of message keys
+    smstate.c           XEP-0198 counters (mod 2^32), bounded unacked queue
     store.c             GKeyFile archive state: cursors and key rings
     receipt_parse.c     receipts and markers element parse/build
     replace_parse.c     correction element parse/build
@@ -498,12 +499,33 @@ Upstream `stream_management.c` implements counting and acks only. Findings:
 5. `<failed/>` drops the queue silently, losing unacked messages without
    telling the user; the XEP-0198 1.6 `h` attribute on `<failed>` is ignored.
 
-Fix plan: M9 (contained in `stream_management.c`) fixes 2 to 5: queue per
-`PurpleAccount`, `<r/>` throttled (after 5 stanzas or 2 s idle), modular
-`h`, `<failed h>` trims the queue. After a non-resumed new session, only
-queued `<message>` stanzas are candidates for resend, and only those whose
-key did not show up in the MAM catch-up (exactly-once with MAM, at least
-once without). Everything else in the queue is dropped.
+M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
+`core/smstate.c`:
+
+- State (counters, unacked queue, `<enabled id max resume location>`) lives
+  in a table keyed by `PurpleAccount`, not in `JabberStream`, so M10 can
+  keep it across a transport reconnect. `jabber_close()` frees it via
+  `jabber_sm_close()`; `JabberStream` keeps only `sm_state`.
+- `<enable resume='true'/>` is sent and `<enabled/>` parsed and logged
+  (debug `xmpp2-sm`), but never used for `<resume/>` until M10.
+- Counters wrap modulo 2^32. Each queued stanza carries its sequence number,
+  so an ack trims exactly the stanzas in `(acked, h]` even after the queue
+  overflowed. An `h` beyond what was sent ends the stream with
+  `handled-count-too-high` and a connection error.
+- The queue is bounded at 1000 stanzas; overflow evicts the oldest and is
+  counted ("untracked" in the debug log).
+- `<r/>` goes out after 5 unrequested stanzas or 2 s after the last stanza
+  (idle timer), only once `<enabled/>` arrived; a server `<r/>` is answered
+  at once. A 20 message burst costs 4 `<r/>` instead of 20.
+- `<failed h='N'/>` trims exactly N (logged), then drops the rest of the
+  queue: without a session those stanzas went over a plain stream.
+- Every `<enable/>` starts from zero and never resends an earlier queue.
+- On `connection-error` every unacked `<message>` with a body is written to
+  its conversation as a system/error line "Connection lost: this message
+  may not have been delivered: TEXT"; then the queue is emptied. Tech lead
+  decision for v1: the user is told instead of an automatic resend; the
+  MAM-checked resend once planned here is left for M10/M3 follow-up if
+  wanted. A clean sign-off reports nothing.
 
 Resumption (M10) is limited by Pidgin itself: on a NetworkManager "down"
 event Pidgin calls `purple_account_disconnect()` on every account

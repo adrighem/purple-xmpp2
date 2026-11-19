@@ -32,7 +32,9 @@ void jabber_sm_enable(JabberStream *js);
 void jabber_sm_process_packet(JabberStream *js, xmlnode *packet);
 
 void jabber_sm_ack_send(JabberStream *js);
-void jabber_sm_ack_read(JabberStream *js, xmlnode *packet);
+
+/* Frees the account's SM state; call from jabber_close(). */
+void jabber_sm_close(JabberStream *js);
 
 void jabber_sm_outbound(JabberStream *js, xmlnode *packet);
 void jabber_sm_inbound(JabberStream *js, xmlnode *packet);
