@@ -123,6 +123,31 @@ test_fin_complete(void)
 	xmlnode_free(iq);
 }
 
+/* Review fix 10: xs:boolean also allows "1" (and "0", "false") */
+static void
+test_fin_complete_boolean(void)
+{
+	static const struct { const char *attr; gboolean complete; } cases[] = {
+		{ "complete='1'", TRUE }, { "complete='true'", TRUE },
+		{ "complete='0'", FALSE }, { "complete='false'", FALSE },
+		{ "", FALSE },
+	};
+	gsize i;
+
+	for (i = 0; i < G_N_ELEMENTS(cases); i++) {
+		char *xml = g_strdup_printf("<fin xmlns='urn:xmpp:mam:2' %s/>",
+		                            cases[i].attr);
+		xmlnode *n = parse(xml);
+		X2MamFin fin;
+
+		g_assert_true(x2_mam_fin_parse(n, &fin));
+		g_assert_cmpint(fin.complete, ==, cases[i].complete);
+		x2_mam_fin_clear(&fin);
+		xmlnode_free(n);
+		g_free(xml);
+	}
+}
+
 static void
 test_fin_incomplete_without_last(void)
 {
@@ -327,6 +352,7 @@ main(int argc, char **argv)
 	g_test_add_func("/mam/query/after-and-before",
 	                test_query_rejects_after_and_before);
 	g_test_add_func("/mam/fin/complete", test_fin_complete);
+	g_test_add_func("/mam/fin/complete-boolean", test_fin_complete_boolean);
 	g_test_add_func("/mam/fin/no-last", test_fin_incomplete_without_last);
 	g_test_add_func("/mam/fin/missing", test_fin_missing);
 	g_test_add_func("/mam/error/item-not-found", test_item_not_found);

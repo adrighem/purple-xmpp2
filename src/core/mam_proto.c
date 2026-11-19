@@ -263,6 +263,7 @@ gboolean
 x2_mam_fin_parse(const xmlnode *iq, X2MamFin *fin)
 {
 	xmlnode *f, *set;
+	const char *complete;
 
 	g_return_val_if_fail(iq != NULL, FALSE);
 	g_return_val_if_fail(fin != NULL, FALSE);
@@ -277,7 +278,10 @@ x2_mam_fin_parse(const xmlnode *iq, X2MamFin *fin)
 	if (f == NULL)
 		return FALSE;
 
-	fin->complete = g_strcmp0(xmlnode_get_attrib(f, "complete"), "true") == 0;
+	/* xs:boolean: "true" or "1" */
+	complete = xmlnode_get_attrib(f, "complete");
+	fin->complete = g_strcmp0(complete, "true") == 0 ||
+	                g_strcmp0(complete, "1") == 0;
 	set = xmlnode_get_child_with_namespace(f, "set", X2_NS_RSM);
 	if (set != NULL) {
 		fin->first = child_text(set, "first");
