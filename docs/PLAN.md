@@ -140,8 +140,8 @@ Status: done. `ext/carbons.c`, `core/carbon_parse.c`; unit tests
 `test_carbon_parse` (forged cases 1 to 3) and `test_carbons` (module in the
 real pipeline); integration `test_carbons.sh` and `test_carbons_off.sh`.
 Cases 2 and 3 are unit-only: a peer cannot forge the outer `from`. The
-module calls `x2_ext_carbons_settled()` once per stream (ext.c holds a no-op
-stub until M3 replaces it). No carbons private/no-copy hint is added to our
+module calls `x2_ext_carbons_settled()` once per stream (dispatched to the
+`carbons_settled` hooks since M3). No carbons private/no-copy hint is added to our
 sends: ARCHITECTURE specifies none and the prpl cannot know that a message
 is, say, end-to-end encrypted.
 
@@ -164,6 +164,19 @@ Acceptance:
   login succeeds, no enable IQ sent.
 
 ## M3: MAM catch-up for the account archive (XEP-0313)
+
+Status: done. `ext/mam.c`, `ext/mam_sync.c`, `ext/statefile.c`,
+`core/mam_proto.c`, `core/store.c`; new hooks `stream_closing` and
+`carbons_settled` (ARCHITECTURE 5). Unit `test_mam_proto` (query building,
+`<fin>`, forged results incl. 11b) and `test_store`; integration
+`test_mam.sh` (items 1 to 7, 11a, 13), `test_mam_bulk.sh` (8, 9, 16),
+`test_mam_recovery.sh` (10, 12, 14, 15, 17). Item 17 runs as "corrupt
+cursor": Prosody keeps every id for a week, so the skip of the old cursor id
+is not reachable there; the cursor message itself may show once more at the
+`cursor_ts` boundary (ARCHITECTURE 7.2). Item 16: pages 1 to 19 are shown,
+then the newest page after the notice (2000 of 2500 messages). Prosody
+answers an unknown `after` id with an empty page, not `item-not-found`; the
+`ids` probe covers that.
 
 Acceptance (all with persistent `--userdir`):
 1. First run of a fresh account (default `mam_initial_days=1`): messages bob
