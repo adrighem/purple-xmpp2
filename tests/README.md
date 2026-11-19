@@ -29,7 +29,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   comment of the file. Highlights: `--userdir` (persistent state, logs),
   `--log txt`, machine-readable `EV` lines for every conversation write,
   `expect-ev|expect-next|no-ev|count-ev` with filters (`kind conv who ctype
-  flag noflag mtime timeout n text`), `expect-debug|no-debug|count-debug`
+  flag noflag mtime timeout n text`; `kind=notify` matches
+  `purple_notify_message()` dialogs), `expect-debug|no-debug|count-debug`
   (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
   `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`, `drop`
   (shutdown() the c2s socket without a stream close, like a network drop).

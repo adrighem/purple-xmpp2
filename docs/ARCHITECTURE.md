@@ -418,8 +418,12 @@ Account archive, after the carbons enable result (follows Gajim's `mam.py`):
   them could only lose messages.
 - Incomplete catch-up (error, watchdog, teardown): the cursor is frozen for
   the rest of the session, live messages no longer move it, so the next
-  login fetches the gap again (live messages of this session may then show
-  twice: a duplicate beats a lost message).
+  login fetches the gap again. Every message shown while the cursor is
+  frozen also has its key put in the persisted ring, so the refetched gap
+  shows nothing twice. After an error, the watchdog or a full queue there
+  is always one notice: account-level (`purple_notify_message()`) for the
+  account archive, plus a line in each conversation that had queued
+  messages; one line in the room for a room archive.
 
 Rooms (M4), on join: disco#info the room before sending the join presence
 (cached per stream; Gajim does the same). If the room advertises

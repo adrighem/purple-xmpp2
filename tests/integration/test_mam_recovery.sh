@@ -60,11 +60,24 @@ no-ev timeout=15 kind=recv texteq=w1
 expect-debug cat=xmpp2-mam timeout=30 text=watchdog
 expect-ev kind=recv timeout=5 texteq=w1
 count-ev kind=system n=1 text=may be incomplete
+count-ev kind=notify n=1 text=may be incomplete
 count-ev kind=recv n=1 texteq=w1
 disconnect
 SCRIPT
 kill "$W_PID" 2>/dev/null || true
 pass "watchdog: LIVE after 30 s, queued message shown, one notice (item 14)"
+
+# 14 (empty queue). Nothing arrives during the stalled catch-up: still one
+# account-level notice.
+XMPP2_TEST_MAM_STALL=1 run_harness alice <<SCRIPT
+connect 30
+expect-debug cat=xmpp2-mam timeout=40 text=watchdog
+expect-ev kind=notify timeout=5 text=may be incomplete
+sleep 1
+count-ev kind=notify n=1 text=may be incomplete
+disconnect
+SCRIPT
+pass "watchdog with an empty queue: one account-level notice (item 14)"
 
 # Frozen cursor: the next login fetches the gap again, but w1 (shown in
 # the incomplete session) is in the persisted ring and not shown twice.

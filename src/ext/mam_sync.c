@@ -23,6 +23,7 @@
 #include "conversation.h"
 #include "debug.h"
 #include "eventloop.h"
+#include "notify.h"
 
 #include "core/mam_proto.h"
 #include "core/sid.h"
@@ -410,8 +411,15 @@ x2_mam_sync_finish(X2MamArchive *a, gboolean complete, const char *notice)
 
 	/* An interrupted last page: show what came, the notice says why */
 	flush_page(a, FALSE);
+	/* One notice for the archive, even when nothing was queued: into the
+	 * room, or account-level for the account archive (the conversations
+	 * in the queue also get a line below). */
 	if (notice != NULL && a->room)
 		x2_mam_notice(a, NULL, notice);
+	else if (notice != NULL)
+		purple_notify_message(a->st->js->gc, PURPLE_NOTIFY_MSG_WARNING,
+		                      _("Message history"), notice, NULL, NULL,
+		                      NULL);
 
 	/* Delivered in arrival order; dedup again, the catch-up may have
 	 * shown some of them already. */
