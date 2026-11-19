@@ -225,6 +225,23 @@ Acceptance (all with persistent `--userdir`):
 
 ## M4: MAM for rooms
 
+Status: done. `ext/mam_muc.c` (new), `ext/mam.c` and `ext/mam_sync.c`
+refactored to one `X2MamArchive` per archive (account and each joined
+room), `core/mam_proto.c` (`x2_mam_room_result_check()`,
+`x2_mam_room_start()`); hooks `chat_joining` and `chat_join_presence`
+(`ext/ext.h`), `jabber_chat_send_join()` split out of `jabber_join_chat()`
+(`chat.c`), and no `chat->joined` reset on a nick change (`presence.c`).
+Unit `test_mam_muc` (room result checks incl. item 10, first-query policy);
+integration `test_mam_muc.sh` (items 1, 2, 5, 6, 7, 8, 10, plus the
+prpl-jabber record: it shows the 5 legacy lines again on rejoin),
+`test_mam_muc_bulk.sh` (items 3, 9 and the room watchdog),
+`test_mam_muc_legacy.sh` (item 4, profile `nomam`). Item 9 uses 600
+messages: room pages are 50, so pages 1 to 9 are shown, then the notice and
+the newest page (as M3 item 16). Item 10's "inner `type='chat'`" half is a
+unit test: Prosody never archives such a message in a room; the
+integration test covers a result relayed by an occupant (outer `from` is
+`room/nick`). Peer primitive `groupsendmany` added.
+
 Acceptance:
 1. carol posts r1..r5 in `test@conference.localhost` while alice is not in
    the room; harness joins: five messages, in order, `DELAYED`, once.

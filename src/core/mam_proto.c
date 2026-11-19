@@ -112,13 +112,42 @@ x2_mam_inner_is_own(const xmlnode *inner, const char *own_bare)
 	       x2_mam_bare_equal(xmlnode_get_attrib(inner, "to"), own_bare);
 }
 
+/* Checks shared by both archive kinds, after the outer from: queryid,
+ * result id and a forwarded message. */
+static X2MamCheck
+check_result(xmlnode *result, const char *queryid, xmlnode **inner,
+             const char **id, const char **why)
+{
+	xmlnode *msg;
+	const char *rid;
+
+	if (queryid == NULL ||
+	    g_strcmp0(xmlnode_get_attrib(result, "queryid"), queryid) != 0) {
+		*why = "queryid does not match an active query";
+		return X2_MAM_FORGED;
+	}
+	rid = xmlnode_get_attrib(result, "id");
+	if (rid == NULL || *rid == '\0') {
+		*why = "result without id";
+		return X2_MAM_FORGED;
+	}
+	msg = x2_forward_get_message(result);
+	if (msg == NULL) {
+		*why = "result without forwarded message";
+		return X2_MAM_FORGED;
+	}
+	*inner = msg;
+	*id = rid;
+	return X2_MAM_VALID;
+}
+
 X2MamCheck
 x2_mam_result_check(xmlnode *outer, const char *own_bare,
                     const char *queryid, xmlnode **inner,
                     const char **id, const char **why)
 {
-	xmlnode *result, *msg;
-	const char *from, *rid;
+	xmlnode *result;
+	const char *from;
 
 	g_return_val_if_fail(outer != NULL, X2_MAM_NOT_RESULT);
 	g_return_val_if_fail(own_bare != NULL, X2_MAM_NOT_RESULT);
@@ -140,29 +169,67 @@ x2_mam_result_check(xmlnode *outer, const char *own_bare,
 		*why = "outer from is not our archive";
 		return X2_MAM_FORGED;
 	}
-	if (queryid == NULL ||
-	    g_strcmp0(xmlnode_get_attrib(result, "queryid"), queryid) != 0) {
-		*why = "queryid does not match an active query";
+	if (check_result(result, queryid, inner, id, why) != X2_MAM_VALID)
 		return X2_MAM_FORGED;
-	}
-	rid = xmlnode_get_attrib(result, "id");
-	if (rid == NULL || *rid == '\0') {
-		*why = "result without id";
-		return X2_MAM_FORGED;
-	}
-	msg = x2_forward_get_message(result);
-	if (msg == NULL) {
-		*why = "result without forwarded message";
-		return X2_MAM_FORGED;
-	}
-	if (!x2_mam_inner_is_own(msg, own_bare)) {
+	if (!x2_mam_inner_is_own(*inner, own_bare)) {
+		*inner = NULL;
+		*id = NULL;
 		*why = "inner message is not to or from us";
 		return X2_MAM_FORGED;
 	}
-
-	*inner = msg;
-	*id = rid;
 	return X2_MAM_VALID;
+}
+
+X2MamCheck
+x2_mam_room_result_check(xmlnode *outer, const char *room,
+                         const char *queryid, xmlnode **inner,
+                         const char **id, const char **why)
+{
+	xmlnode *result;
+
+	g_return_val_if_fail(outer != NULL, X2_MAM_NOT_RESULT);
+	g_return_val_if_fail(room != NULL, X2_MAM_NOT_RESULT);
+	g_return_val_if_fail(inner != NULL && id != NULL && why != NULL,
+	                     X2_MAM_NOT_RESULT);
+
+	*inner = NULL;
+	*id = NULL;
+	*why = NULL;
+
+	result = xmlnode_get_child_with_namespace(outer, "result", X2_NS_MAM);
+	if (result == NULL)
+		return X2_MAM_NOT_RESULT;
+
+	/* Only the room itself answers for its archive: an occupant
+	 * (room/nick) or anybody else is not the archive. */
+	if (g_strcmp0(xmlnode_get_attrib(outer, "from"), room) != 0) {
+		*why = "outer from is not the room";
+		return X2_MAM_FORGED;
+	}
+	if (check_result(result, queryid, inner, id, why) != X2_MAM_VALID)
+		return X2_MAM_FORGED;
+	if (!x2_mam_bare_equal(xmlnode_get_attrib(*inner, "from"), room)) {
+		*inner = NULL;
+		*id = NULL;
+		*why = "inner message is not from the room";
+		return X2_MAM_FORGED;
+	}
+	/* Whatever the archive says, it is a message of this room: never a
+	 * 1:1 conversation with an occupant or a spoofed JID. */
+	xmlnode_set_attrib(*inner, "type", "groupchat");
+	return X2_MAM_VALID;
+}
+
+X2MamRoomStart
+x2_mam_room_start(const char *cursor, gint64 cursor_ts, time_t now,
+                  int threshold_days)
+{
+	if (cursor == NULL || *cursor == '\0' || cursor_ts <= 0 ||
+	    threshold_days <= 0)
+		return X2_MAM_ROOM_LAST_PAGE;
+	if ((gint64)now - cursor_ts > (gint64)threshold_days * 24 * 3600)
+		return X2_MAM_ROOM_LAST_PAGE;
+	return X2_MAM_ROOM_AFTER_CURSOR;
 }
 
 static char *
@@ -181,10 +248,22 @@ child_text(const xmlnode *parent, const char *name)
 	return s;
 }
 
+X2MamQueued
+x2_mam_queued_fate(gboolean seen, gboolean complete, gboolean last_page,
+                   gboolean delayed, gboolean has_stanza_id)
+{
+	if (seen)
+		return X2_MAM_QUEUED_DUPLICATE;
+	if (complete && last_page && delayed && has_stanza_id)
+		return X2_MAM_QUEUED_SKIPPED;
+	return X2_MAM_QUEUED_DELIVER;
+}
+
 gboolean
 x2_mam_fin_parse(const xmlnode *iq, X2MamFin *fin)
 {
 	xmlnode *f, *set;
+	const char *complete;
 
 	g_return_val_if_fail(iq != NULL, FALSE);
 	g_return_val_if_fail(fin != NULL, FALSE);
@@ -199,7 +278,10 @@ x2_mam_fin_parse(const xmlnode *iq, X2MamFin *fin)
 	if (f == NULL)
 		return FALSE;
 
-	fin->complete = g_strcmp0(xmlnode_get_attrib(f, "complete"), "true") == 0;
+	/* xs:boolean: "true" or "1" */
+	complete = xmlnode_get_attrib(f, "complete");
+	fin->complete = g_strcmp0(complete, "true") == 0 ||
+	                g_strcmp0(complete, "1") == 0;
 	set = xmlnode_get_child_with_namespace(f, "set", X2_NS_RSM);
 	if (set != NULL) {
 		fin->first = child_text(set, "first");

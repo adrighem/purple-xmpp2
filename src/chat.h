@@ -73,6 +73,14 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
                              const char *server, const char *handle,
                              const char *password, GHashTable *data);
 
+/**
+ * Sends the join presence of @a chat (created by jabber_join_chat()), with
+ * the password and history settings of its components.  Called by
+ * jabber_join_chat(), or later by the module that held the join
+ * (x2_ext_chat_joining()).
+ */
+void jabber_chat_send_join(JabberChat *chat);
+
 void jabber_chat_join(PurpleConnection *gc, GHashTable *data);
 JabberChat *jabber_chat_find(JabberStream *js, const char *room,
 		const char *server);

@@ -93,6 +93,14 @@ void x2_msg_set_inner(JabberStream *js, X2Msg *m, xmlnode *inner,
 void x2_msg_receive(JabberStream *js, xmlnode *packet);
 
 /**
+ * The conversation key of @a jid (X2Msg::peer): the bare JID, or the full
+ * JID of a room occupant for a private message (joined room, or the
+ * muc#user hint in @a msg).  Free with g_free().
+ */
+char *x2_msg_peer_of(JabberStream *js, const char *jid, const char *type,
+                     xmlnode *msg);
+
+/**
  * TRUE for messages that happen now and come from somebody else.  Chat
  * states are only meaningful for those.
  */

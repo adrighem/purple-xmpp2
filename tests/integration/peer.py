@@ -15,6 +15,7 @@ Sending:
   correct JID ID TEXT       XEP-0308 correction of message ID
   raw XML                   send a hand-written stanza verbatim
   groupsend ROOM TEXT       groupchat message
+  groupsendmany ROOM N PREFIX [GAP_MS]   N groupchat messages "PREFIX-1" ..
   befriend JID              presence subscribe (auto-approves inbound requests)
 Waiting and assertions (regex for stanza actions, substring for wait):
   wait TEXT [SECS]          wait for a chat body containing TEXT (history counts)
@@ -193,6 +194,17 @@ class Peer(slixmpp.ClientXMPP):
     async def act_groupsend(self, rest: str) -> None:
         room, _, text = rest.partition(" ")
         self.send_message(mto=room, mbody=text, mtype="groupchat")
+
+    async def act_groupsendmany(self, rest: str) -> None:
+        room, n, prefix, *gap = rest.split()
+        for i in range(1, int(n) + 1):
+            self.send_message(mto=room, mbody=f"{prefix}-{i}",
+                              mtype="groupchat")
+            if gap:
+                await asyncio.sleep(int(gap[0]) / 1000)
+            elif i % 50 == 0:
+                await asyncio.sleep(0.05)
+        print(f"PEER sent {n} to {room}", flush=True)
 
     async def act_befriend(self, rest: str) -> None:
         self.send_presence(pto=rest, ptype="subscribe")

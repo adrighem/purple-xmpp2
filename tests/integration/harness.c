@@ -69,7 +69,8 @@
  *   dump-debug                print captured xmpp2 debug lines
  *
  * FILTER = space separated key=value, optional trailing text:
- *   kind=recv|sent|system|error|other   conv=NAME  who=JIDPREFIX  ctype=im|chat
+ *   kind=recv|sent|system|error|other|notify   conv=NAME  who=JIDPREFIX  ctype=im|chat
+ *   (notify: purple_notify_message() dialogs, conv=- who=-)
  *   flag=A|B (all set)  noflag=A|B (none set)  mtime=EPOCH,SECS  timeout=SECS  n=N
  *   cat=xmpp2-prefix (debug only)
  *   text=SUBSTRING | texteq=EXACT   (must be last; takes the rest of the line)
@@ -591,6 +592,31 @@ static void null_write_conv(PurpleConversation *conv, const char *who, const cha
 	}
 	poll_pending();
 }
+
+/* purple_notify_message(): an EV of kind "notify" (no conversation) */
+static void *null_notify_message(PurpleNotifyMsgType type, const char *title,
+                                 const char *primary, const char *secondary)
+{
+	Ev *e = g_new0(Ev, 1);
+
+	(void)type;
+	(void)title;
+	e->kind = "notify";
+	e->conv = g_strdup("-");
+	e->who = g_strdup("-");
+	e->text = g_strdup_printf("%s%s%s", primary ? primary : "",
+	                          secondary ? " " : "", secondary ? secondary : "");
+	e->mtime = time(NULL);
+	g_ptr_array_add(evs, e);
+	fprintf(out, "EV notify conv=- who=- flags=0x0 mtime=%ld names= ctype=im %s\n",
+	        (long)e->mtime, e->text);
+	fflush(out);
+	poll_pending();
+	return NULL;
+}
+
+static PurpleNotifyUiOps notify_ops = { null_notify_message, NULL, NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
 static PurpleConversationUiOps conv_ops = {
 	NULL, NULL, NULL, NULL, null_write_conv, NULL, NULL, NULL, NULL,
@@ -1424,6 +1450,7 @@ int main(int argc, char **argv)
 	purple_eventloop_set_ui_ops(&eventloop_ops);
 	purple_conversations_set_ui_ops(&conv_ops);
 	purple_request_set_ui_ops(&request_ops);
+	purple_notify_set_ui_ops(&notify_ops);
 	if (plugin_dir)
 		purple_plugins_add_search_path(plugin_dir);
 	if (!purple_core_init(UI_ID)) {

@@ -3,7 +3,9 @@
 # M3: MAM failure paths (PLAN M3 items 10, 12, 14, 15, 17): corrupt cursor,
 # watchdog, teardown during the catch-up, server without MAM.
 # XMPP2_TEST_MAM_STALL=1 makes the plugin build but never send its MAM
-# query (test hook in src/ext/mam_sync.c), so the archive stays SYNCING.
+# query (test hook in src/ext/mam_sync.c, only with -DXMPP2_TEST_HOOKS=ON;
+# otherwise those items are skipped and the test exits 77), so the archive
+# stays SYNCING.
 # Run: PRPL=prpl-xmpp2 PLUGIN_DIR=build tests/integration/test_mam_recovery.sh
 set -euo pipefail
 
@@ -49,6 +51,8 @@ K1="$(grep -c '^EV recv .* k1$' "$H_OUT" || true)"
 grep -q '^cursor=no-such-id' "$STATE" && fail "cursor not repaired"
 pass "corrupt cursor: start=cursor_ts retry, no pre-cursor duplicates, no error (items 10, 17; boundary k1=$K1)"
 
+# Items 14 and 15 need the stall hook (cmake -DXMPP2_TEST_HOOKS=ON).
+if test_hooks_enabled; then
 # 14. Watchdog: the query never leaves, a live message waits ~30 s, then
 # shows with one "history incomplete" notice.
 peer_bg "$WORK/w.log" bob --stay 50 --do "sleep 4" --do "send alice@localhost w1"
@@ -60,11 +64,35 @@ no-ev timeout=15 kind=recv texteq=w1
 expect-debug cat=xmpp2-mam timeout=30 text=watchdog
 expect-ev kind=recv timeout=5 texteq=w1
 count-ev kind=system n=1 text=may be incomplete
+count-ev kind=notify n=1 text=may be incomplete
 count-ev kind=recv n=1 texteq=w1
 disconnect
 SCRIPT
 kill "$W_PID" 2>/dev/null || true
 pass "watchdog: LIVE after 30 s, queued message shown, one notice (item 14)"
+
+# 14 (empty queue). Nothing arrives during the stalled catch-up: still one
+# account-level notice.
+XMPP2_TEST_MAM_STALL=1 run_harness alice <<SCRIPT
+connect 30
+expect-debug cat=xmpp2-mam timeout=40 text=watchdog
+expect-ev kind=notify timeout=5 text=may be incomplete
+sleep 1
+count-ev kind=notify n=1 text=may be incomplete
+disconnect
+SCRIPT
+pass "watchdog with an empty queue: one account-level notice (item 14)"
+
+# Frozen cursor: the next login fetches the gap again, but w1 (shown in
+# the incomplete session) is in the persisted ring and not shown twice.
+run_harness alice <<SCRIPT
+connect 30
+expect-debug cat=xmpp2-mam text=account archive LIVE
+sleep 2
+no-ev timeout=1 texteq=w1
+disconnect
+SCRIPT
+pass "after an incomplete catch-up the refetched gap shows nothing twice"
 
 # 15. Teardown during the catch-up delivers the queue before going offline.
 peer_bg "$WORK/t.log" bob --stay 30 --do "sleep 4" --do "send alice@localhost t1"
@@ -78,6 +106,8 @@ count-ev kind=recv n=1 texteq=t1
 SCRIPT
 kill "$T_PID" 2>/dev/null || true
 pass "teardown during catch-up shows queued messages (item 15)"
+
+fi
 
 # 12. Server without MAM: login and messages work as before.
 XMPP2_SERVER_PROFILE=nomam start_server
@@ -95,3 +125,5 @@ disconnect
 SCRIPT
 wait "$NM_PID" || fail "peer did not get nomam-ping"
 pass "server without MAM: login and messages unchanged (item 12)"
+
+test_hooks_enabled || { echo "SKIP: items 14, 15 need -DXMPP2_TEST_HOOKS=ON"; exit 77; }

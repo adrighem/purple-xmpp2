@@ -59,6 +59,19 @@ typedef struct {
 	void (*session_ready)(JabberStream *js);   /* PURPLE_CONNECTED */
 	X2Verdict (*inbound)(JabberStream *js, X2Msg *m);
 	void (*outbound)(JabberStream *js, xmlnode *message, X2Out *o);
+	/*
+	 * A room is about to be joined (jabber_join_chat()).  Return TRUE to
+	 * hold the join presence: the module then calls jabber_chat_send_join()
+	 * itself later (e.g. after the room's disco#info).  The first module
+	 * returning TRUE wins; the rest are not asked.
+	 */
+	gboolean (*chat_joining)(JabberStream *js, JabberChat *chat);
+	/* The <x xmlns='http://jabber.org/protocol/muc'/> of a join presence,
+	 * after the user's history settings: adjust it (e.g. <history/>). */
+	void (*chat_join_presence)(JabberStream *js, JabberChat *chat,
+	                           xmlnode *muc_x);
+	/* Once per join: our first self-presence of the room (status 110),
+	 * never on a nick change or a later presence update. */
 	void (*chat_joined)(JabberStream *js, JabberChat *chat);
 	/*
 	 * Start of jabber_close(), while the connection, buddies and chats
@@ -84,6 +97,10 @@ void x2_ext_server_info(JabberStream *js, const char *from, xmlnode *query);
 void x2_ext_pre_presence(JabberStream *js);
 void x2_ext_session_ready(JabberStream *js);
 void x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o);
+/* TRUE if a module holds the join presence (see chat_joining above) */
+gboolean x2_ext_chat_joining(JabberStream *js, JabberChat *chat);
+void x2_ext_chat_join_presence(JabberStream *js, JabberChat *chat,
+                               xmlnode *muc_x);
 void x2_ext_chat_joined(JabberStream *js, JabberChat *chat);
 void x2_ext_stream_closing(JabberStream *js);
 

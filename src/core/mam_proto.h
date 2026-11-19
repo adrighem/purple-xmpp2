@@ -22,6 +22,9 @@
 /** RSM page size of the account archive catch-up. */
 #define X2_MAM_PAGE_SIZE 100
 
+/** RSM page size of a room archive catch-up, also its "last page". */
+#define X2_MAM_ROOM_PAGE_SIZE 50
+
 /** Parameters of one archive query (one RSM page). */
 typedef struct {
 	const char *queryid;   /* required, echoed in every <result/> */
@@ -69,6 +72,39 @@ X2MamCheck x2_mam_result_check(xmlnode *outer, const char *own_bare,
                                const char **id, const char **why);
 
 /**
+ * Validates a <message/> carrying a room-archive result (ARCHITECTURE 8).
+ *
+ * Accepted only if the outer from is exactly @a room (never absent: that
+ * would be our own server answering for the account archive), the queryid
+ * equals @a queryid, the result has an id and a forwarded <message/>, and
+ * the inner from bare JID is @a room.  On X2_MAM_VALID the inner type is
+ * forced to groupchat: a room result is always delivered into the room,
+ * never as a 1:1 conversation.
+ *
+ * Parameters as for x2_mam_result_check(), with @a room the room's bare JID.
+ */
+X2MamCheck x2_mam_room_result_check(xmlnode *outer, const char *room,
+                                    const char *queryid, xmlnode **inner,
+                                    const char **id, const char **why);
+
+/** First query of a room archive catch-up (ARCHITECTURE 7.2). */
+typedef enum {
+	X2_MAM_ROOM_AFTER_CURSOR,  /* after=<cursor>, paged forward */
+	X2_MAM_ROOM_LAST_PAGE      /* the newest X2_MAM_ROOM_PAGE_SIZE only */
+} X2MamRoomStart;
+
+/**
+ * Chooses the first room query: after the cursor while it is newer than
+ * @a threshold_days, else (no cursor, no timestamp, too old, threshold 0)
+ * the last page only.
+ *
+ * @param cursor     The stored cursor of the room, or NULL.
+ * @param cursor_ts  Its timestamp, 0 if unknown.
+ */
+X2MamRoomStart x2_mam_room_start(const char *cursor, gint64 cursor_ts,
+                                 time_t now, int threshold_days);
+
+/**
  * TRUE if the inner from or to bare JID of an account-archive message is
  * @a own_bare: the account archive only ever holds our own conversations.
  */
@@ -76,6 +112,28 @@ gboolean x2_mam_inner_is_own(const xmlnode *inner, const char *own_bare);
 
 /** TRUE if the bare part of @a jid (resource stripped) equals @a bare. */
 gboolean x2_mam_bare_equal(const char *jid, const char *bare);
+
+/** Fate of a live message held back during a catch-up, when it ends. */
+typedef enum {
+	X2_MAM_QUEUED_DELIVER,    /* show it now */
+	X2_MAM_QUEUED_DUPLICATE,  /* its key was seen: shown already */
+	X2_MAM_QUEUED_SKIPPED     /* archived, in the history the page cap
+	                           * skipped on purpose */
+} X2MamQueued;
+
+/**
+ * Decides what happens to a queued message at the end of a catch-up.
+ *
+ * A seen key is a duplicate.  An offline copy (XEP-0160: delayed, with a
+ * trusted stanza-id) is dropped only after a complete catch-up that ended
+ * on the newest page because of the page cap: it is archived, and showing
+ * it after the newest page would break ordering.  In every other case it
+ * is shown: if the archive delivered it too, the stanza-id dedup already
+ * caught it, so dropping it could only lose it.
+ */
+X2MamQueued x2_mam_queued_fate(gboolean seen, gboolean complete,
+                               gboolean last_page, gboolean delayed,
+                               gboolean has_stanza_id);
 
 /** Parsed <fin/> of a query result. */
 typedef struct {

@@ -123,6 +123,31 @@ test_fin_complete(void)
 	xmlnode_free(iq);
 }
 
+/* Review fix 10: xs:boolean also allows "1" (and "0", "false") */
+static void
+test_fin_complete_boolean(void)
+{
+	static const struct { const char *attr; gboolean complete; } cases[] = {
+		{ "complete='1'", TRUE }, { "complete='true'", TRUE },
+		{ "complete='0'", FALSE }, { "complete='false'", FALSE },
+		{ "", FALSE },
+	};
+	gsize i;
+
+	for (i = 0; i < G_N_ELEMENTS(cases); i++) {
+		char *xml = g_strdup_printf("<fin xmlns='urn:xmpp:mam:2' %s/>",
+		                            cases[i].attr);
+		xmlnode *n = parse(xml);
+		X2MamFin fin;
+
+		g_assert_true(x2_mam_fin_parse(n, &fin));
+		g_assert_cmpint(fin.complete, ==, cases[i].complete);
+		x2_mam_fin_clear(&fin);
+		xmlnode_free(n);
+		g_free(xml);
+	}
+}
+
 static void
 test_fin_incomplete_without_last(void)
 {
@@ -284,6 +309,28 @@ test_result_missing_parts(void)
 		&inner, &id, &why), ==, X2_MAM_FORGED);
 }
 
+/* Review fix 5: an offline copy is dropped only after a page-cap skip */
+static void
+test_queued_fate(void)
+{
+	/* seen: a duplicate, whatever else */
+	g_assert_cmpint(x2_mam_queued_fate(TRUE, TRUE, FALSE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_DUPLICATE);
+	/* complete forward catch-up: an unseen offline copy is news */
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, FALSE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+	/* page cap, newest page shown: the copy lies in the skipped part */
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, TRUE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_SKIPPED);
+	/* incomplete, live (not delayed), or untrusted: shown */
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, FALSE, TRUE, TRUE, TRUE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, TRUE, FALSE, TRUE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+	g_assert_cmpint(x2_mam_queued_fate(FALSE, TRUE, TRUE, TRUE, FALSE), ==,
+	                X2_MAM_QUEUED_DELIVER);
+}
+
 static void
 test_bare_equal(void)
 {
@@ -305,6 +352,7 @@ main(int argc, char **argv)
 	g_test_add_func("/mam/query/after-and-before",
 	                test_query_rejects_after_and_before);
 	g_test_add_func("/mam/fin/complete", test_fin_complete);
+	g_test_add_func("/mam/fin/complete-boolean", test_fin_complete_boolean);
 	g_test_add_func("/mam/fin/no-last", test_fin_incomplete_without_last);
 	g_test_add_func("/mam/fin/missing", test_fin_missing);
 	g_test_add_func("/mam/error/item-not-found", test_item_not_found);
@@ -316,5 +364,6 @@ main(int argc, char **argv)
 	g_test_add_func("/mam/result/forged-inner", test_result_forged_inner);
 	g_test_add_func("/mam/result/missing-parts", test_result_missing_parts);
 	g_test_add_func("/mam/bare-equal", test_bare_equal);
+	g_test_add_func("/mam/queued-fate", test_queued_fate);
 	return g_test_run();
 }

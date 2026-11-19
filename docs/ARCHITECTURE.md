@@ -145,7 +145,9 @@ src/
     x2stream.h          per-stream shared state plus one opaque slot per module
     msgctx.c msgctx.h   X2Msg: build, classify, deliver to message.c
     carbons.c           XEP-0280
-    mam.c               XEP-0313 sync state machines (account and rooms)
+    mam.c               XEP-0313 hooks, result checks, dedup
+    mam_sync.c          XEP-0313 catch-up state machine, one per archive
+    mam_muc.c           XEP-0313 rooms: disco before join, history, join
     statefile.c         persistence glue: path, debounce, account-removed
     receipts.c          XEP-0184
     markers.c           XEP-0333
@@ -209,7 +211,9 @@ typedef struct {
     void (*session_ready)(JabberStream *js);   /* PURPLE_CONNECTED */
     X2Verdict (*inbound)(JabberStream *js, X2Msg *m);
     void (*outbound)(JabberStream *js, xmlnode *message, X2Out *o);
-    void (*chat_joined)(JabberStream *js, JabberChat *chat);
+    gboolean (*chat_joining)(JabberStream *js, JabberChat *chat); /* TRUE: hold the join */
+    void (*chat_join_presence)(JabberStream *js, JabberChat *chat, xmlnode *muc_x);
+    void (*chat_joined)(JabberStream *js, JabberChat *chat);  /* once per join */
     void (*stream_closing)(JabberStream *js);  /* top of jabber_close() */
     void (*carbons_settled)(JabberStream *js); /* carbons enable answered */
 } X2Ext;
@@ -371,9 +375,12 @@ Stream teardown in any state flushes the queue to the UI before the
 `JabberStream` is freed (`stream_closing` hook). Implementation (M3):
 `ext/mam.c` (hooks, result checks, dedup), `ext/mam_sync.c` (this state
 machine), `ext/statefile.c` (9), `core/mam_proto.c`, `core/store.c`. Debug
-category `xmpp2-mam`. Test hook: with `XMPP2_TEST_MAM_STALL` set in the
-environment the query is built and logged but never sent, so the watchdog
-and teardown paths can be tested.
+category `xmpp2-mam`. Test hook (compiled in only with
+`cmake -DXMPP2_TEST_HOOKS=ON`, as in CI; release builds ignore the
+variable): with `XMPP2_TEST_MAM_STALL` set in the environment the query is
+built and logged but never sent, so the watchdog and teardown paths can be
+tested. ctest passes `XMPP2_TEST_HOOKS_BUILT` to the integration tests; the
+stall parts exit 77 (skipped) without it.
 
 Queries (`core/mam_proto.c`): `urn:xmpp:mam:2` form with optional `start`
 and `with`, RSM `<max>` 100 and `<after>`/`<before/>`. Page responses are
@@ -404,17 +411,22 @@ Account archive, after the carbons enable result (follows Gajim's `mam.py`):
   limit: when the cursor id is corrupt rather than pruned, the message at
   `cursor_ts` itself can show once more (its real id differs from the stored
   one).
-- Offline storage (XEP-0160) overlap: after a complete catch-up that covered
-  the range (results came back, the cursor was found, or a `start` query),
-  queued messages that are delayed and carry a trusted stanza-id are
-  dropped: they are archived, so they were shown from the archive or lie in
-  the part the page cap skipped on purpose (showing them after the newest
-  page would break ordering). Not after a cursor-only sync, where the
-  offline copy is the only way the message is shown.
+- Offline storage (XEP-0160) overlap: an offline copy that the archive also
+  returned is caught by its stanza-id (`S:` key) at flush time. Only after
+  a complete catch-up that ended on the newest page because of the page cap
+  are queued messages that are delayed and carry a trusted stanza-id
+  dropped without being seen: they lie in the part the cap skipped on
+  purpose, and showing them after the newest page would break ordering
+  (`x2_mam_queued_fate()`). In every other case they are shown: dropping
+  them could only lose messages.
 - Incomplete catch-up (error, watchdog, teardown): the cursor is frozen for
   the rest of the session, live messages no longer move it, so the next
-  login fetches the gap again (live messages of this session may then show
-  twice: a duplicate beats a lost message).
+  login fetches the gap again. Every message shown while the cursor is
+  frozen also has its key put in the persisted ring, so the refetched gap
+  shows nothing twice. After an error, the watchdog or a full queue there
+  is always one notice: account-level (`purple_notify_message()`) for the
+  account archive, plus a line in each conversation that had queued
+  messages; one line in the room for a room archive.
 
 Rooms (M4), on join: disco#info the room before sending the join presence
 (cached per stream; Gajim does the same). If the room advertises
@@ -427,15 +439,47 @@ a later self-presence update; it then queries the room archive (`to=room`):
   `after=<cursor>`, paged, at most 10 pages; beyond that jump to the last
   page and write one system line "older history skipped".
 - Otherwise: last page only (`<before/>`, `max=50`), plus the same system
-  line. This mirrors classic MUC history but without replaying it on every
-  rejoin.
+  line when the `<fin/>` says the page is not the whole archive
+  (`complete='false'`). This mirrors classic MUC history but without
+  replaying it on every rejoin. If a stale cursor is still inside that page,
+  the messages up to it were shown before: they are dropped and there is no
+  notice.
 - Room without MAM: unchanged upstream behaviour (legacy history).
+
+Implementation (M4): `ext/mam_muc.c`. `jabber_join_chat()` asks the
+`chat_joining` hook, which sends the room `disco#info` and holds the join
+(at most 10 s; on timeout the join goes ahead as a room without MAM); the
+answer is cached per stream (errors are not, a room created by the join is
+asked again next time), marks the room trusted for stanza-ids
+(`x2_ext_archive_trust()`) when it advertises `urn:xmpp:mam:2` or
+`urn:xmpp:sid:0`, and releases the join through `jabber_chat_send_join()`,
+whose `chat_join_presence` hook replaces any user `<history/>` with
+`maxchars='0' maxstanzas='0'` for a MAM room. `presence.c` resets
+`chat->joined` on an unavailable self-presence only when it is not a nick
+change (status 303), so `chat_joined` fires once per join. Each room has its
+own `X2MamArchive` (the same state machine as the account archive in
+`ext/mam_sync.c`: queue, watchdog, item-not-found retry, probe, frozen
+cursor), page size 50, cap 10 pages, cursor in the state file section
+`[archive <room>]`. Room results are accepted only from the room's bare JID
+with the room's active queryid and an inner `from` of the room, are always
+delivered as groupchat into the room (`x2_mam_room_result_check()` forces
+the inner `type`), and are never treated as 1:1. Results of a last-page
+query are held until its `<fin/>` decides the notice. Live groupchat of a
+MAM room is deduplicated (`S:` key of the room's stanza-id) and queued while
+the room syncs; rooms without MAM are not touched. Our own messages sent
+from another device come back from our nick and are marked sent by
+libpurple. MUC private messages are 1:1 messages of the account archive:
+the `muc#user` hint keeps the occupant full JID as the conversation.
 
 Ordering: Pidgin can only append to a conversation. While an archive is
 `SYNCING`, live and carbon messages for it are queued and flushed in arrival
 order after the last page, dedup applied at flush time. This also absorbs
 the XEP-0160 offline flood that Prosody delivers right after initial
 presence, because the account archive enters `SYNCING` in `pre_presence`.
+Messages without a `<body/>` (chat states, receipts, markers, a room
+subject) are not queued: they pass at once. The queue holds at most 5000
+messages per archive; one more ends the catch-up as incomplete (frozen
+cursor, "history incomplete" notice) and delivers the queue.
 
 Cursor updates: after every `<fin>` (cursor = `last`, timestamp = last
 delivered `ts`), and for live messages only once the archive is `LIVE`

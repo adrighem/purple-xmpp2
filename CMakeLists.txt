@@ -19,6 +19,9 @@ option(XMPP2_IDN "Use libidn for stringprep (recommended)" ON)
 option(XMPP2_SANITIZE
     "Build with AddressSanitizer and UBSan (for ctest -L unit; the plugin then only loads into a sanitized host)"
     OFF)
+option(XMPP2_TEST_HOOKS
+    "Compile in test-only hooks driven by XMPP2_TEST_* environment variables (CI, integration tests)"
+    OFF)
 
 if(XMPP2_SANITIZE)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
@@ -55,6 +58,7 @@ set(XMPP2_SOURCES
     src/ext/mam.c
     src/ext/mam_sync.c
     src/ext/markers.c
+    src/ext/mam_muc.c
     src/ext/migrate.c
     src/ext/migrate_blist.c
     src/ext/migrate_clone.c
@@ -147,6 +151,10 @@ if(XMPP2_HAVE_GETTEXT)
     target_compile_definitions(xmpp2 PRIVATE
         ENABLE_NLS
         XMPP2_LOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}")
+endif()
+
+if(XMPP2_TEST_HOOKS)
+    target_compile_definitions(xmpp2 PRIVATE XMPP2_TEST_HOOKS)
 endif()
 
 if(XMPP2_IDN)
