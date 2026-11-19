@@ -101,6 +101,32 @@ wait_for_line() {
 	return 1
 }
 
+# pidgin_xvfb SECS CONFDIR LOG: run Pidgin under Xvfb for SECS seconds with
+# CONFDIR (set HOME and XDG_* first), debug output to LOG. Pidgin's SIGTERM
+# handler is not async-signal-safe and may hang: it gets SIGKILL 5 s after
+# the TERM, and the outer timeout stays above that, or xvfb-run would be
+# killed instead and leave Pidgin writing into CONFDIR. Returns once no
+# Pidgin of CONFDIR is left (fails loud if one survives), so the caller may
+# remove the directory.
+pidgin_xvfb() {
+	local secs="$1" conf="$2" log="$3" pat _
+	timeout "$((secs + 30))" xvfb-run -a \
+		timeout -k 5 "$secs" pidgin -n -d -c "$conf" >"$log" 2>&1 || true
+	pat="^pidgin -n -d -c $conf\$"
+	for _ in $(seq 1 50); do
+		pgrep -u "$(id -u)" -f -- "$pat" >/dev/null || return 0
+		sleep 0.1
+	done
+	echo "pidgin for $conf still running, killing it" >&2
+	pkill -KILL -u "$(id -u)" -f -- "$pat" || true
+	for _ in $(seq 1 50); do
+		pgrep -u "$(id -u)" -f -- "$pat" >/dev/null || return 0
+		sleep 0.1
+	done
+	echo "pidgin for $conf does not exit" >&2
+	return 1
+}
+
 # test_hooks_enabled: the plugin was built with -DXMPP2_TEST_HOOKS=ON (ctest
 # sets XMPP2_TEST_HOOKS=1|0; export it yourself when running by hand).
 test_hooks_enabled() { [[ "${XMPP2_TEST_HOOKS:-0}" == 1 ]]; }

@@ -37,10 +37,12 @@ export XDG_CONFIG_HOME="$WORK/home/.config"
 export XDG_DATA_HOME="$WORK/home/.local/share"
 export XDG_CACHE_HOME="$WORK/home/.cache"
 
-set +e
-timeout "$((RUN_SECS + 20))" xvfb-run -a \
-	timeout "$RUN_SECS" pidgin -n -d -c "$WORK/conf" >"$LOG" 2>&1
-set -e
+# shellcheck source=../integration/lib.sh
+source "$ROOT/tests/integration/lib.sh"
+pidgin_xvfb "$RUN_SECS" "$WORK/conf" "$LOG" || {
+	echo "FAIL: Pidgin did not exit" >&2
+	exit 1
+}
 
 fail() {
 	echo "FAIL: $*" >&2
@@ -66,8 +68,6 @@ fi
 echo "OK: pidgin probed and loaded $SO_NAME "
 
 # Confirm both protocol ids register side by side, using the headless harness.
-# shellcheck source=../integration/lib.sh
-source "$ROOT/tests/integration/lib.sh"
 if command -v gcc >/dev/null && ensure_harness 2>/dev/null; then
 	: >"$WORK/empty.script"
 	for id in "$PRPL" prpl-jabber; do
