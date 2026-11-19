@@ -806,12 +806,25 @@ main loop with the accounts and, in Pidgin, the buddy list window present.
   `/plugins/prpl/xmpp2/migration_never` is false: if some `prpl-jabber`
   account has no `prpl-xmpp2` twin, `purple_request_action()` asks "Copy N
   XMPP accounts to XMPP (xmpp2)?" with Copy, Not now, Never. Never sets the
-  pref, Not now does nothing (asks again next start). Test hook: the pref
+  pref, Not now does nothing (asks again next start). Test hook (only in
+  `-DXMPP2_TEST_HOOKS=ON` builds): the pref
   `/plugins/prpl/xmpp2/migration_offer_any_ui` makes any UI get the offer.
-- The same copy is always available as the prpl action "Copy XMPP
-  accounts to xmpp2..." (`jabber_actions()`, so on every connected xmpp2
-  account, every UI). It asks first (Copy, Cancel), tells the result with
-  `purple_notify_info()`, and says so when there is nothing to copy.
+- The same copy is available as the action "Copy XMPP accounts to
+  xmpp2..." in two places. (a) The prpl action (`jabber_actions()`), in the
+  menu of every connected xmpp2 account, every UI. Pidgin shows prpl actions
+  only for a connected account of that prpl (`gtkblist.c` 8249), so after
+  "Never", or with no xmpp2 account, it cannot be reached. (b) A plugin
+  action under Tools > Plugin Actions > XMPP (xmpp2), which needs no
+  account. Pidgin's Tools menu skips protocol plugins
+  (`pidgin_blist_update_plugin_actions()`), so `plugin_init` registers a
+  second, standard-type plugin with `purple_plugin_new()` and
+  `purple_plugin_register()`: id `core-xmpp2-migrate`, flag
+  `PURPLE_PLUGIN_FLAG_INVISIBLE` (not in the plugin list, not saved, cannot be
+  unloaded by the user), no path, loaded at once and destroyed in
+  `plugin_uninit` (its `PurplePluginInfo` lives in our module, so it must go
+  before the module does). Both entries ask first (Copy, Cancel), tell the
+  result with `purple_notify_info()`, and say so when there is nothing to
+  copy.
 - Clone: username (JID and resource), saved password (only if the original
   remembers it; never logged), alias, user info, buddy icon path, check-mail
   flag, proxy info, and each setting of `x2_migrate_map_options()`: the
@@ -833,7 +846,9 @@ main loop with the accounts and, in Pidgin, the buddy list window present.
   if the original was enabled (the same full JID twice would make the server
   kick one session with a resource conflict, in a loop). Never deleted.
   Idempotent: an account is skipped when a `prpl-xmpp2` account with the
-  same username exists (bare JID case-insensitive, resource exact).
+  same bare JID exists (case-insensitive, the resource is ignored: it is only
+  how the account logs in, and a second session with it would conflict), so
+  two prpl-jabber accounts that differ only in the resource get one copy.
 - State: `[meta] initial=cursor-only` is written to the clone's state file
   at creation (9), so the first catch-up only stores a cursor and shows no
   history (7.2).

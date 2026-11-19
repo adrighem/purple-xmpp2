@@ -139,10 +139,11 @@ test_same_username(void)
 	g_assert_true(x2_migrate_same_username("A@X.org/home", "a@x.ORG/home"));
 	g_assert_true(x2_migrate_same_username("a@x.org", "a@x.org/"));
 	g_assert_true(x2_migrate_same_username("a@x.org", "a@x.org"));
-	/* the resource is case sensitive and part of the identity */
-	g_assert_false(x2_migrate_same_username("a@x.org/Home", "a@x.org/home"));
-	g_assert_false(x2_migrate_same_username("a@x.org/home", "a@x.org"));
-	g_assert_false(x2_migrate_same_username("a@x.org/h", "a@x.org/h/x"));
+	/* the resource is ignored: same bare JID, same account */
+	g_assert_true(x2_migrate_same_username("a@x.org/Home", "a@x.org/home"));
+	g_assert_true(x2_migrate_same_username("a@x.org/home", "a@x.org"));
+	g_assert_true(x2_migrate_same_username("a@x.org/h", "a@x.org/h/x"));
+	g_assert_true(x2_migrate_same_username("A@x.org/laptop", "a@X.ORG/phone"));
 	g_assert_false(x2_migrate_same_username("a@x.org", "b@x.org"));
 	g_assert_false(x2_migrate_same_username("a@x.org", "a@x.org.evil"));
 	g_assert_false(x2_migrate_same_username("a@x.org", "ba@x.org"));

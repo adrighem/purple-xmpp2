@@ -16,6 +16,7 @@ source "$HERE/lib.sh"
 test_init migrate
 
 UI=xmpp2harness
+# the hook that offers in any UI exists only in -DXMPP2_TEST_HOOKS=ON builds
 ANY_UI=(--libpref b:/plugins/prpl/xmpp2/migration_offer_any_ui=1)
 
 # seed DIR: alice@localhost/laptop (enabled, saved password, alias, options,
@@ -269,6 +270,23 @@ diff "$WORK/acc.dump" "$WORK/acc2.dump" >/dev/null || fail "accounts changed by 
 diff "$WORK/bl.dump" "$WORK/bl2.dump" >/dev/null || fail "buddy list changed by the second run"
 pass "second run creates and changes nothing (idempotent)"
 
+# --- 2b. the plugin action (Tools > Plugin Actions) --------------------------
+# Pidgin shows prpl actions only under a connected account of that prpl, so
+# the copy also hangs on an invisible standard plugin: no connect here, no
+# xmpp2 account is online.
+HUSERDIR="$WORK/ud-plugin-action"
+seed "$HUSERDIR"
+run_harness carol <<SCRIPT
+plugin-action core-xmpp2-migrate Copy XMPP accounts
+answer 0
+expect-account prpl-xmpp2 bob@localhost/orig2 exists=1 enabled=0
+expect-account prpl-xmpp2 alice@localhost/laptop exists=1
+expect-account prpl-jabber alice@localhost/laptop enabled=0
+SCRIPT
+grep -q "^REQUEST Copy 2 XMPP accounts to XMPP (xmpp2)? \[Copy|Cancel\]" "$H_OUT" ||
+	fail "plugin action did not ask for confirmation"
+pass "the plugin action copies without a connected xmpp2 account"
+
 # --- 3. startup offer --------------------------------------------------------
 # harness UI id: no dialog
 HUSERDIR="$WORK/ud-noui"
@@ -278,55 +296,71 @@ no-request 5
 SCRIPT
 pass "no startup dialog outside Pidgin"
 
-# Not now: nothing copied, offered again next start
-HUSERDIR="$WORK/ud-offer"
-seed "$HUSERDIR"
-run_harness carol "${ANY_UI[@]}" <<SCRIPT
-answer 1 15
-expect-account prpl-xmpp2 alice@localhost/laptop exists=0
-no-request 2
-SCRIPT
-grep -q "^OK answer: Copy 2 XMPP accounts to XMPP (xmpp2)? \[Copy|Not now|Never\] -> b1" "$H_OUT" ||
-	fail "offer text or buttons wrong"
-! grep -q "name='migration_never' type='bool' value='1'" "$HUSERDIR/prefs.xml" ||
-	fail "Not now was persisted"
-run_harness carol "${ANY_UI[@]}" <<SCRIPT
-answer 1 15
-SCRIPT
-pass "Not now copies nothing and offers again next start"
+if test_hooks_enabled; then
+	# Not now: nothing copied, offered again next start
+	HUSERDIR="$WORK/ud-offer"
+	seed "$HUSERDIR"
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	answer 1 15
+	expect-account prpl-xmpp2 alice@localhost/laptop exists=0
+	no-request 2
+	SCRIPT
+	grep -q "^OK answer: Copy 2 XMPP accounts to XMPP (xmpp2)? \[Copy|Not now|Never\] -> b1" "$H_OUT" ||
+		fail "offer text or buttons wrong"
+	! grep -q "name='migration_never' type='bool' value='1'" "$HUSERDIR/prefs.xml" ||
+		fail "Not now was persisted"
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	answer 1 15
+	SCRIPT
+	pass "Not now copies nothing and offers again next start"
 
-# Never: persisted, no offer on the next start
-run_harness carol "${ANY_UI[@]}" <<SCRIPT
-answer 2 15
-expect-account prpl-xmpp2 alice@localhost/laptop exists=0
-SCRIPT
-grep -q "name='migration_never' type='bool' value='1'" "$HUSERDIR/prefs.xml" ||
-	fail "Never not persisted in prefs.xml"
-run_harness carol "${ANY_UI[@]}" <<SCRIPT
-no-request 5
-SCRIPT
-pass "Never persists across restarts"
+	# Never: persisted, no offer on the next start
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	answer 2 15
+	expect-account prpl-xmpp2 alice@localhost/laptop exists=0
+	SCRIPT
+	grep -q "name='migration_never' type='bool' value='1'" "$HUSERDIR/prefs.xml" ||
+		fail "Never not persisted in prefs.xml"
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	no-request 5
+	SCRIPT
+	pass "Never persists across restarts"
 
-# the action still works after Never
-run_harness carol "${ANY_UI[@]}" <<SCRIPT
-connect 30
-action Copy XMPP accounts
-answer 0
-expect-account prpl-xmpp2 bob@localhost/orig2 exists=1 enabled=0
-disconnect
-SCRIPT
-pass "the prpl action is independent of Never"
+	# the action still works after Never
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	connect 30
+	action Copy XMPP accounts
+	answer 0
+	expect-account prpl-xmpp2 bob@localhost/orig2 exists=1 enabled=0
+	disconnect
+	SCRIPT
+	pass "the prpl action is independent of Never"
 
-# Copy from the offer: copies, the enabled original is disabled
-HUSERDIR="$WORK/ud-offer-copy"
-seed "$HUSERDIR"
-run_harness carol "${ANY_UI[@]}" <<SCRIPT
-answer 0 15
-expect-account prpl-xmpp2 alice@localhost/laptop enabled=1
-expect-account prpl-jabber alice@localhost/laptop enabled=0
-expect-account prpl-xmpp2 bob@localhost/orig2 enabled=0
-SCRIPT
-pass "Copy in the startup offer"
+	# and so does the plugin action, with no connected account at all
+	NEVER_PREFS="$HUSERDIR/prefs.xml"
+	HUSERDIR="$WORK/ud-never-plugin"
+	seed "$HUSERDIR"
+	cp "$NEVER_PREFS" "$HUSERDIR/prefs.xml"
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	plugin-action core-xmpp2-migrate Copy XMPP accounts
+	answer 0
+	expect-account prpl-xmpp2 bob@localhost/orig2 exists=1 enabled=0
+	SCRIPT
+	pass "the plugin action is independent of Never and of any connection"
+
+	# Copy from the offer: copies, the enabled original is disabled
+	HUSERDIR="$WORK/ud-offer-copy"
+	seed "$HUSERDIR"
+	run_harness carol "${ANY_UI[@]}" <<-SCRIPT
+	answer 0 15
+	expect-account prpl-xmpp2 alice@localhost/laptop enabled=1
+	expect-account prpl-jabber alice@localhost/laptop enabled=0
+	expect-account prpl-xmpp2 bob@localhost/orig2 enabled=0
+	SCRIPT
+	pass "Copy in the startup offer"
+else
+	echo "SKIP: dialog answers need -DXMPP2_TEST_HOOKS=ON"
+fi
 
 # --- 4. real Pidgin ------------------------------------------------------------
 # Pidgin's UI id gates the offer: run it under Xvfb with a seeded profile and

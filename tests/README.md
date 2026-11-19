@@ -36,7 +36,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `drop` (shutdown() the c2s socket without a stream close, like a network
   drop), `raw|raw-refused` (send XML through the prpl's `send_raw`, the XML
   console path),
-  `action TEXT` (run a prpl action by label), `answer N`/`no-request`
+  `action TEXT` (run a prpl action by label), `plugin-action ID TEXT` (run the
+  action of a standard plugin, as Tools > Plugin Actions does), `answer N`/`no-request`
   (`purple_request_action()` has a recording UI: the script presses a
   button), `remove-account` (delete the account as the Accounts dialog
   does, then stop), `expect-account PRPL USER enabled= connected= exists=` (any account

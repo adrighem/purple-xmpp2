@@ -118,16 +118,11 @@ bare_len(const char *s)
 gboolean
 x2_migrate_same_username(const char *a, const char *b)
 {
-	const char *ra, *rb;
 	gsize la, lb;
 
 	g_return_val_if_fail(a != NULL && b != NULL, FALSE);
 
 	la = bare_len(a);
 	lb = bare_len(b);
-	if (la != lb || g_ascii_strncasecmp(a, b, la) != 0)
-		return FALSE;
-	ra = a[la] == '/' ? a + la + 1 : "";
-	rb = b[lb] == '/' ? b + lb + 1 : "";
-	return strcmp(ra, rb) == 0;
+	return la == lb && g_ascii_strncasecmp(a, b, la) == 0;
 }

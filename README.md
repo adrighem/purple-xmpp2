@@ -125,12 +125,16 @@ look for **XMPP2** under Accounts, Manage Accounts, Add.
 
 In Pidgin, the plugin offers to copy your built-in XMPP accounts to XMPP (xmpp2)
 when it loads (choose "Copy", "Not now", or "Never"). Other libpurple clients do
-not get this offer. In every client you can run it later from the account's
-action menu: **Copy XMPP accounts to xmpp2...**.
+not get this offer. You can run it later in Pidgin from **Tools, Plugin
+Actions, XMPP (xmpp2), Copy XMPP accounts to xmpp2...**, which works without
+any xmpp2 account and after "Never". Other clients, and Pidgin once an xmpp2
+account is online, also have it in that account's action menu. (Pidgin shows
+an account's actions only while it is connected.)
 
 The copy takes the account settings, buddy list entries and room bookmarks. The
 originals are kept but disabled (a disabled original stays disabled in the
-copy). The copy replays no history, as described above. Passwords are copied
+copy). An account counts as already copied when an xmpp2 account with the same
+bare JID exists, whatever its resource. The copy replays no history, as described above. Passwords are copied
 only if they are saved. You can also add an **XMPP (xmpp2)** account by hand with
 the same username, domain, and password. Do not run both accounts at once: two
 sessions with the same resource conflict, so give the new account a different

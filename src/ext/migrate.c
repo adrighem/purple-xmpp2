@@ -4,8 +4,10 @@
 /**
  * @file migrate.c Copy of prpl-jabber accounts to prpl-xmpp2 (ARCHITECTURE 10)
  *
- * Two entry points ask for confirmation and then run the same copy: the
- * prpl action (every UI) and a one-time offer at startup (Pidgin only).
+ * Three entry points ask for confirmation and then run the same copy: the
+ * prpl action (every UI, but Pidgin shows prpl actions only for a connected
+ * account of that prpl), a plugin action under Tools > Plugin Actions that
+ * needs no xmpp2 account, and a one-time offer at startup (Pidgin only).
  * Libpurple loads protocol plugins before it loads the accounts, so the
  * offer is deferred with a timer.
  */
@@ -17,6 +19,7 @@
 #include "notify.h"
 #include "prefs.h"
 #include "request.h"
+#include "version.h"
 
 #include "core/migrate_map.h"
 #include "ext/migrate.h"
@@ -30,6 +33,7 @@
 #define OFFER_DELAY_SECS 2
 
 static PurplePlugin *plugin_handle;
+static PurplePlugin *actions_plugin;
 static guint offer_timer;
 static gboolean copy_running;
 
@@ -43,6 +47,8 @@ has_twin(PurpleAccount *orig)
 	for (l = purple_accounts_get_all(); l != NULL; l = l->next) {
 		PurpleAccount *a = l->data;
 
+		/* the same bare JID is the same account: the resource is only
+		 * how it logs in, and a second session with it would conflict */
 		if (purple_strequal(purple_account_get_protocol_id(a),
 		                    XMPP2_PRPL_ID) &&
 		    x2_migrate_same_username(purple_account_get_username(a),
@@ -215,14 +221,86 @@ x2_migrate_add_action(GList **actions)
 		_("Copy XMPP accounts to xmpp2..."), action_cb));
 }
 
+/*
+ * Pidgin lists the actions of a protocol plugin only under the menu of a
+ * connected account of it (and never under Tools, which skips protocol
+ * plugins), so with no xmpp2 account the copy would be out of reach.  A
+ * second, invisible plugin of the standard type lives as long as this one
+ * and gives Tools > Plugin Actions > XMPP (xmpp2) the same entry.
+ * Invisible: it is not in the plugin list, so a user cannot unload it.
+ */
+static GList *
+actions_plugin_actions(PurplePlugin *plugin, gpointer context)
+{
+	GList *actions = NULL;
+
+	x2_migrate_add_action(&actions);
+	return actions;
+}
+
+static PurplePluginInfo actions_info = {
+	PURPLE_PLUGIN_MAGIC,
+	PURPLE_MAJOR_VERSION,
+	PURPLE_MINOR_VERSION,
+	PURPLE_PLUGIN_STANDARD,                           /**< type           */
+	NULL,                                             /**< ui_requirement */
+	PURPLE_PLUGIN_FLAG_INVISIBLE,                     /**< flags          */
+	NULL,                                             /**< dependencies   */
+	PURPLE_PRIORITY_DEFAULT,                          /**< priority       */
+
+	X2_MIGRATE_ACTIONS_PLUGIN_ID,                     /**< id             */
+	"XMPP (xmpp2)",                                   /**< name           */
+	XMPP2_VERSION,                                    /**< version        */
+	N_("Copy XMPP accounts to xmpp2"),                /**< summary        */
+	N_("Copy XMPP accounts to xmpp2"),                /**< description    */
+	NULL,                                             /**< author         */
+	XMPP2_WEBSITE,                                    /**< homepage       */
+
+	NULL,                                             /**< load           */
+	NULL,                                             /**< unload         */
+	NULL,                                             /**< destroy        */
+
+	NULL,                                             /**< ui_info        */
+	NULL,                                             /**< extra_info     */
+	NULL,                                             /**< prefs_info     */
+	actions_plugin_actions,                           /**< actions        */
+
+	NULL, NULL, NULL, NULL                            /* padding */
+};
+
+static void
+register_actions_plugin(void)
+{
+	actions_plugin = purple_plugin_new(TRUE, NULL);
+	actions_plugin->info = &actions_info;
+	if (!purple_plugin_register(actions_plugin) ||
+	    !purple_plugin_load(actions_plugin)) {
+		purple_debug_error(DBG, "cannot register the Tools menu entry\n");
+		purple_plugin_destroy(actions_plugin);
+		actions_plugin = NULL;
+	}
+}
+
+static void
+unregister_actions_plugin(void)
+{
+	/* its info lives in this module: it must be gone before we are */
+	if (actions_plugin != NULL)
+		purple_plugin_destroy(actions_plugin);
+	actions_plugin = NULL;
+}
+
 static gboolean
 offer_cb(gpointer unused)
 {
 	offer_timer = 0;
 	if (purple_prefs_get_bool(X2_MIGRATE_PREF_NEVER))
 		return FALSE;
-	if (!purple_strequal(purple_core_get_ui(), PIDGIN_UI_ID) &&
-	    !purple_prefs_get_bool(X2_MIGRATE_PREF_ANY_UI))
+	if (!purple_strequal(purple_core_get_ui(), PIDGIN_UI_ID)
+#ifdef XMPP2_TEST_HOOKS
+	    && !purple_prefs_get_bool(X2_MIGRATE_PREF_ANY_UI)
+#endif
+	    )
 		return FALSE;
 	if (x2_migrate_pending() == 0)
 		return FALSE;
@@ -235,7 +313,10 @@ migrate_plugin_init(PurplePlugin *plugin)
 {
 	plugin_handle = plugin;
 	purple_prefs_add_bool(X2_MIGRATE_PREF_NEVER, FALSE);
+#ifdef XMPP2_TEST_HOOKS
 	purple_prefs_add_bool(X2_MIGRATE_PREF_ANY_UI, FALSE);
+#endif
+	register_actions_plugin();
 	offer_timer = purple_timeout_add_seconds(OFFER_DELAY_SECS, offer_cb,
 	                                         NULL);
 }
@@ -247,6 +328,7 @@ migrate_plugin_uninit(PurplePlugin *plugin)
 		purple_timeout_remove(offer_timer);
 	offer_timer = 0;
 	purple_request_close_with_handle(plugin);
+	unregister_actions_plugin();
 	plugin_handle = NULL;
 }
 

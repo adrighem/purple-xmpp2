@@ -4,8 +4,8 @@
 /**
  * @file migrate.h Copy of prpl-jabber accounts to prpl-xmpp2 (ARCHITECTURE 10)
  *
- * migrate.c   the module: startup offer, the prpl action, the loop over the
- *             originals
+ * migrate.c   the module: startup offer, the prpl and plugin actions, the
+ *             loop over the originals
  * migrate_clone.c  one account: settings, password, proxy, archive state
  * migrate_blist.c  the buddy list entries of one account
  *
@@ -25,15 +25,20 @@
 
 /* "Never" was chosen in the startup offer */
 #define X2_MIGRATE_PREF_NEVER "/plugins/prpl/xmpp2/migration_never"
+/* Id of the invisible plugin that shows the action under Tools */
+#define X2_MIGRATE_ACTIONS_PLUGIN_ID "core-xmpp2-migrate"
+
+#ifdef XMPP2_TEST_HOOKS
 /* Test hook: also offer in UIs other than Pidgin (the harness has none) */
 #define X2_MIGRATE_PREF_ANY_UI "/plugins/prpl/xmpp2/migration_offer_any_ui"
+#endif
 
 extern const X2Ext x2_ext_migrate;
 
 /** Number of prpl-jabber accounts that have no prpl-xmpp2 twin. */
 guint x2_migrate_pending(void);
 
-/** Appends the "Copy XMPP accounts to xmpp2..." entry to a prpl action list. */
+/** Appends the "Copy XMPP accounts to xmpp2..." entry to an action list. */
 void x2_migrate_add_action(GList **actions);
 
 /**

@@ -339,9 +339,10 @@ mapping, list value check, username equality) and integration
 (proxy, no password); the harness runs the prpl action (`action`, `answer`),
 the clone logs in and shows no history (hist1 in the archive, new1 live), the
 state file is `initial=cursor-only`, logs join `logs/jabber/<user>/`, a second
-run changes nothing, the startup offer (harness `--libpref` test hook): no
-dialog by default, Not now asks again, Never persists in `prefs.xml`, the
-action works after Never; and, when pidgin and xvfb-run exist, a real Pidgin
+run changes nothing, the Tools plugin action copies with no connected account,
+the startup offer (harness `--libpref` test hook, hooks builds only): no
+dialog by default, Not now asks again, Never persists in `prefs.xml`, both
+actions work after Never; and, when pidgin and xvfb-run exist, a real Pidgin
 (UI id `gtk-gaim`) makes the offer. Not done: no human clicked the Pidgin
 dialog (the test reads its debug log); the Pidgin account window is not
 refreshed by hand after the copy (libpurple's account-added and enabled
@@ -354,7 +355,8 @@ or the harness calling `x2_migrate_run()` through a test command):
   password, alias, resource, connection security and port; the original
   remains, disabled.
 - In the harness (UI id not `gtk-gaim`) no dialog appears at startup; the prpl
-  action still performs the copy.
+  action and the Tools plugin action (no connected account needed) still
+  perform the copy.
 - An originally disabled prpl-jabber account yields a disabled clone and
   stays disabled.
 - Room bookmarks (blist chats) of the original exist for the clone.
@@ -430,8 +432,11 @@ Acceptance:
   cursor-only). Cloned accounts use cursor-only (no replay of history
   prpl-jabber already logged).
 - Migration: automatic offer only when the UI is Pidgin
-  (`purple_core_get_ui()`); the prpl action is always available. A clone of a
-  disabled account stays disabled.
+  (`purple_core_get_ui()`). The copy is also the prpl action of every
+  connected xmpp2 account (every UI) and, because Pidgin shows prpl actions
+  only for a connected account, an action under Tools > Plugin Actions that
+  needs no xmpp2 account (so it stays reachable after "Never"). Twins are
+  detected on the bare JID. A clone of a disabled account stays disabled.
 - Reviewer findings accepted: archive and carbon spoofing checks, MAM query
   after the carbons enable result, SYNCING watchdog and flush on teardown,
   stricter dedup keys, state file keyed by full username in a 0700 dir,
