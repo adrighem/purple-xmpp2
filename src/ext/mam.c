@@ -280,7 +280,10 @@ mam_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 	    to == NULL)
 		return;
 
-	peer = jabber_get_bare_jid(to);
+	/* The same conversation key as the archived copy gets on the way in
+	 * (full JID for a private message to a room occupant) */
+	peer = x2_msg_peer_of(js, to, xmlnode_get_attrib(message, "type"),
+	                      message);
 	key = x2_dedup_make_key(NULL, TRUE, peer, o->id);
 	if (key != NULL) {
 		x2_dedup_add(js->x2->dedup, key);

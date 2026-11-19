@@ -26,9 +26,9 @@
  * the archive before the join, by the muc#user <x/> that XEP-0045 puts on
  * private messages.
  */
-static char *
-make_peer(JabberStream *js, const char *jid, const char *type,
-          xmlnode *msg)
+char *
+x2_msg_peer_of(JabberStream *js, const char *jid, const char *type,
+               xmlnode *msg)
 {
 	JabberID *id;
 	char *peer;
@@ -73,7 +73,7 @@ update_from_message(JabberStream *js, X2Msg *m)
 	char *origin_id;
 
 	g_free(m->peer);
-	m->peer = make_peer(js, jid, type, m->msg);
+	m->peer = x2_msg_peer_of(js, jid, type, m->msg);
 
 	if (m->archive == NULL)
 		m->archive = default_archive(js, jid, type);
