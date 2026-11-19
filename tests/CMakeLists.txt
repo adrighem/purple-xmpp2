@@ -43,3 +43,17 @@ add_test(NAME integration-selftest
 set_tests_properties(integration-selftest PROPERTIES
     LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
     ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")
+
+add_test(NAME integration-upload
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh
+        ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_upload.sh)
+set_tests_properties(integration-upload PROPERTIES
+    LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
+    ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")
+
+add_test(NAME integration-upload-fallback
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh
+        ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_upload_fallback.sh)
+set_tests_properties(integration-upload-fallback PROPERTIES
+    LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 180
+    ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")

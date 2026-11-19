@@ -50,6 +50,8 @@ set(XMPP2_SOURCES
     src/disco.c
     src/ext/ext.c
     src/ext/msgctx.c
+    src/ext/upload.c
+    src/ext/upload_xfer.c
     src/ibb.c
     src/iq.c
     src/jabber.c
