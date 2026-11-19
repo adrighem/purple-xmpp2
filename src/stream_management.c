@@ -201,7 +201,11 @@ sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt)
 			                               bare ? bare : to);
 	}
 	escaped = g_markup_escape_text(text, -1);
+	/* fmt is one of the _() literals of our callers, with one %s */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	line = g_strdup_printf(fmt, escaped);
+#pragma GCC diagnostic pop
 	if (conv != NULL) {
 		purple_conversation_write(conv, NULL, line,
 		                          PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_ERROR,

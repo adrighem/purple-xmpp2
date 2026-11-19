@@ -89,6 +89,13 @@ set(XMPP2_SOURCES
     src/xdata.c)
 
 # Pure protocol logic (glib + xmlnode only), shared with the unit tests.
+# Distro builds add -Werror=format-security (dpkg-buildflags hardening):
+# warn about the same here so CI catches a non-literal format first.
+set(XMPP2_FORMAT_WARNINGS -Wformat=2 -Wformat-security)
+if(XMPP2_WERROR)
+    list(APPEND XMPP2_FORMAT_WARNINGS -Werror=format-security)
+endif()
+
 add_library(x2core STATIC
     src/core/carbon_parse.c
     src/core/corrlog.c
@@ -106,7 +113,7 @@ set_target_properties(x2core PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     C_VISIBILITY_PRESET hidden)
 target_compile_features(x2core PRIVATE c_std_11)
-target_compile_options(x2core PRIVATE -Wall -Wextra)
+target_compile_options(x2core PRIVATE -Wall -Wextra ${XMPP2_FORMAT_WARNINGS})
 if(XMPP2_WERROR)
     target_compile_options(x2core PRIVATE -Werror)
 endif()
@@ -130,7 +137,7 @@ endif()
 # Inherited callbacks have fixed signatures with many unused parameters, and
 # xdata.c calls one callback type through another (works on every ABI we
 # build for); keep both quiet until xdata.c is reworked.
-target_compile_options(xmpp2 PRIVATE -Wall -Wextra
+target_compile_options(xmpp2 PRIVATE -Wall -Wextra ${XMPP2_FORMAT_WARNINGS}
     -Wno-unused-parameter -Wno-cast-function-type)
 if(XMPP2_WERROR)
     target_compile_options(xmpp2 PRIVATE -Werror)

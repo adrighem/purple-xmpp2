@@ -76,17 +76,13 @@ ux_free(PurpleXfer *xfer)
 }
 
 /* Tells the user why the upload failed, then cancels the transfer. */
-static void G_GNUC_PRINTF(2, 3)
-ux_fail(PurpleXfer *xfer, const char *fmt, ...)
+static void
+ux_fail(PurpleXfer *xfer, const char *reason)
 {
 	X2UploadXfer *ux = xfer->data;
 	const char *name;
-	char *reason, *msg;
-	va_list ap;
+	char *msg;
 
-	va_start(ap, fmt);
-	reason = g_strdup_vprintf(fmt, ap);
-	va_end(ap);
 	name = ux->filename ? ux->filename : purple_xfer_get_filename(xfer);
 	msg = g_strdup_printf(_("File upload of %s failed: %s"),
 		name ? name : _("(unnamed)"), reason);
@@ -94,8 +90,21 @@ ux_fail(PurpleXfer *xfer, const char *fmt, ...)
 	purple_xfer_error(PURPLE_XFER_SEND, purple_xfer_get_account(xfer),
 		purple_xfer_get_remote_user(xfer), msg);
 	g_free(msg);
-	g_free(reason);
 	purple_xfer_cancel_local(xfer);
+}
+
+/* ux_fail() with a printf-style reason */
+static void G_GNUC_PRINTF(2, 3)
+ux_failf(PurpleXfer *xfer, const char *fmt, ...)
+{
+	char *reason;
+	va_list ap;
+
+	va_start(ap, fmt);
+	reason = g_strdup_vprintf(fmt, ap);
+	va_end(ap);
+	ux_fail(xfer, reason);
+	g_free(reason);
 }
 
 static void
@@ -139,7 +148,7 @@ put_result(PurpleXfer *xfer, const char *response, const char *error)
 	int code = 0;
 
 	if (error != NULL) {
-		ux_fail(xfer, _("could not send the file to the server: %s"), error);
+		ux_failf(xfer, _("could not send the file to the server: %s"), error);
 		return;
 	}
 	if (!x2_upload_status_parse(response, &code)) {
@@ -153,14 +162,14 @@ put_result(PurpleXfer *xfer, const char *response, const char *error)
 	 */
 	if (code != 201) {
 		if (code == 401 || code == 403)
-			ux_fail(xfer, _("the upload server refused the file (HTTP %d)"), code);
+			ux_failf(xfer, _("the upload server refused the file (HTTP %d)"), code);
 		else if (code == 413)
 			ux_fail(xfer, _("the file is too large for the upload server (HTTP 413)"));
 		else if (code >= 300 && code <= 399)
-			ux_fail(xfer, _("the upload server redirected the upload "
+			ux_failf(xfer, _("the upload server redirected the upload "
 				"(HTTP %d), which is not supported"), code);
 		else
-			ux_fail(xfer, _("the upload server answered HTTP %d"), code);
+			ux_failf(xfer, _("the upload server answered HTTP %d"), code);
 		return;
 	}
 	ux_finish(xfer);
@@ -241,7 +250,7 @@ start_put(PurpleXfer *xfer)
 	gsize request_len;
 
 	if (!build_request(xfer, &request, &request_len, &err)) {
-		ux_fail(xfer, "%s", err->message);
+		ux_fail(xfer, err->message);
 		g_clear_error(&err);
 		return;
 	}
@@ -301,7 +310,7 @@ slot_cb(JabberStream *js, const char *from, JabberIqType type, const char *id,
 	if (type == JABBER_IQ_ERROR) {
 		char *why = slot_error_text(js, packet);
 
-		ux_fail(xfer, _("the server did not give an upload slot: %s"), why);
+		ux_failf(xfer, _("the server did not give an upload slot: %s"), why);
 		g_free(why);
 		return;
 	}
@@ -320,7 +329,7 @@ slot_cb(JabberStream *js, const char *from, JabberIqType type, const char *id,
 		purple_account_get_bool(purple_xfer_get_account(xfer),
 			X2_UPLOAD_OPT_PLAIN_HTTP, FALSE), &err);
 	if (ux->slot == NULL) {
-		ux_fail(xfer, "%s", err->message);
+		ux_fail(xfer, err->message);
 		g_clear_error(&err);
 		return;
 	}
@@ -350,7 +359,7 @@ xfer_init(PurpleXfer *xfer)
 	}
 	/* Before any network request: the user gets the limit, not a 413 */
 	if (!x2_upload_check_size(size, st->max_size, &err)) {
-		ux_fail(xfer, "%s", err->message);
+		ux_fail(xfer, err->message);
 		g_clear_error(&err);
 		return;
 	}
