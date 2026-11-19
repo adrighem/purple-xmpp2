@@ -74,6 +74,7 @@ set(XMPP2_SOURCES
 add_library(x2core STATIC
     src/core/dedup.c
     src/core/forward.c
+    src/core/upload_proto.c
     src/core/sid.c)
 set_target_properties(x2core PROPERTIES
     POSITION_INDEPENDENT_CODE ON

@@ -21,6 +21,7 @@ endfunction()
 x2_unit_test(sid)
 x2_unit_test(forward)
 x2_unit_test(dedup)
+x2_unit_test(upload)
 
 # The X2Msg pipeline: real ext.c, msgctx.c and jutil.c against the module
 # table and stubs in test_msgctx.c.
