@@ -46,6 +46,7 @@
 #include "version.h"
 #include "xmlnode.h"
 #include "ext/ext.h"
+#include "ext/migrate.h"
 
 #include "auth.h"
 #include "buddy.h"
@@ -2443,6 +2444,8 @@ GList *jabber_actions(PurplePlugin *plugin, gpointer context)
 
 	if(js->commands)
 		jabber_adhoc_init_server_commands(js, &m);
+
+	x2_migrate_add_action(&m);
 
 	return m;
 }

@@ -7,6 +7,7 @@
  *       --user alice@localhost/harness --password secret \
  *       --host 127.0.0.1 --port 15222 [--pref s:name=val|i:name=1|b:name=1]
  *       [--script FILE] [--userdir DIR] [--log txt] [--trust-cert FILE] [--debug]
+ *       [--libpref s:|i:|b:/pref/path=VAL]
  *
  *   --userdir DIR     persistent libpurple user dir (state, logs, accounts and
  *                     blist survive restarts). Default: a temp dir removed on exit.
@@ -41,6 +42,17 @@
  *   upload-fail JID PATH [SECS]  same, but the xfer must be cancelled
  *   focus JID                 unseen-count := 0 and emit conversation-updated
  *                             (PURPLE_CONV_UPDATE_UNSEEN), like a focused window
+ *   action TEXT               run the prpl action of the (connected) account
+ *                             whose label contains TEXT, like the Accounts menu
+ * Requests (purple_request_action() has a UI here that only records it):
+ *   answer N [SECS]           wait for a request (10), press its button N
+ *                             (0-based); prints "<primary> [b0|b1] -> bN"
+ *   no-request [SECS]         no request arrives within SECS (3)
+ * Accounts (all accounts of the userdir, not only --user):
+ *   expect-account PRPL USER [exists=0|1] [enabled=0|1] [connected=0|1]
+ *                             [timeout=SECS]   poll until it holds (10);
+ *                             enabled is for this UI, USER is the full username
+ *   --libpref s:|i:|b:/path=V  set a libpurple pref before the main loop
  * Assertions on conversation events (EV lines):
  *   expect-ev FILTER          wait until an event matches (history counts)
  *   expect-next FILTER        same, but only events after the previous
@@ -394,7 +406,8 @@ static int dbg_count(const Filter *f)
 /* ---- run state ---- */
 typedef enum {
 	P_NONE, P_CONNECT, P_DISCONNECT, P_SLEEP, P_JOIN, P_XFER,
-	P_EXPECT_EV, P_ABSENT_EV, P_EXPECT_DBG, P_ABSENT_DBG
+	P_EXPECT_EV, P_ABSENT_EV, P_EXPECT_DBG, P_ABSENT_DBG,
+	P_POLL, P_POLL_ABSENT
 } Pending;
 
 static GMainLoop *loop;
@@ -406,6 +419,8 @@ static char *pending_text;    /* join: room */
 static Filter *pending_filter;
 static gboolean pending_next, pending_fail_ok;
 static guint pending_timer;
+static guint poll_source;
+static gboolean (*poll_fn)(char **detail);
 static int exit_code;
 
 static gboolean next_command(gpointer unused);
@@ -427,6 +442,10 @@ static void resume(gboolean ok, const char *detail)
 	if (pending_timer)
 		g_source_remove(pending_timer);
 	pending_timer = 0;
+	if (poll_source)
+		g_source_remove(poll_source);
+	poll_source = 0;
+	poll_fn = NULL;
 	pending = P_NONE;
 	say(ok, pending_cmd, detail);
 	filter_free(pending_filter);
@@ -493,6 +512,7 @@ static gboolean on_timeout(gpointer data)
 	switch (pending) {
 	case P_ABSENT_EV:
 	case P_ABSENT_DBG:
+	case P_POLL_ABSENT:
 	case P_SLEEP:
 		resume(TRUE, NULL);
 		break;
@@ -538,7 +558,8 @@ static void null_write_conv(PurpleConversation *conv, const char *who, const cha
 	char *plain, *names, *esc, *p;
 
 	(void)alias;
-	if (purple_conversation_get_account(conv) != account || !message)
+	/* every account of the userdir: migration tests run clones next to --user */
+	if (!message)
 		return;
 	plain = purple_markup_strip_html(message);
 	e = g_new0(Ev, 1);
@@ -761,6 +782,224 @@ static char *split_word(char *s)
 }
 
 /* Shared body of expect-ev/expect-next/no-ev/count-ev and the debug twins. */
+/* ---- accounts, requests and prpl actions ---- */
+
+/* purple_request_action() has no real UI here: the request is recorded and
+ * a script answers it with "answer N". */
+static GCallback req_cbs[8];
+static guint req_n;
+static void *req_data;
+static char *req_text;
+
+static void req_clear(void)
+{
+	req_n = 0;
+	g_free(req_text);
+	req_text = NULL;
+}
+
+static void *request_action_ui(const char *title, const char *primary,
+                               const char *secondary, int default_action,
+                               PurpleAccount *acct, const char *who,
+                               PurpleConversation *conv, void *user_data,
+                               size_t action_count, va_list actions)
+{
+	GString *b = g_string_new(NULL);
+	size_t i;
+
+	req_clear();
+	for (i = 0; i < action_count; i++) {
+		const char *label = va_arg(actions, const char *);
+		GCallback cb = va_arg(actions, GCallback);
+
+		if (i < G_N_ELEMENTS(req_cbs))
+			req_cbs[req_n++] = cb;
+		g_string_append_printf(b, "%s%s", i ? "|" : "", label);
+	}
+	req_data = user_data;
+	req_text = g_strdup_printf("%s [%s]", primary, b->str);
+	g_string_free(b, TRUE);
+	fprintf(out, "REQUEST %s\n", req_text);
+	fflush(out);
+	return &req_n;
+}
+
+static void request_close_ui(PurpleRequestType type, void *ui_handle)
+{
+	req_clear();
+}
+
+/* libpurple writes blist.xml only when the buddy list has a UI */
+static PurpleBlistUiOps blist_ops;
+
+static PurpleRequestUiOps request_ops = {
+	.request_action = request_action_ui,
+	.close_request = request_close_ui,
+};
+
+static gboolean poll_tick(gpointer unused)
+{
+	char *detail = NULL;
+	gboolean hit = poll_fn(&detail);
+
+	if (!hit)
+		return TRUE;
+	poll_source = 0;
+	if (pending == P_POLL_ABSENT)
+		resume(FALSE, "unexpected request or state");
+	else
+		resume(TRUE, detail);
+	g_free(detail);
+	return FALSE;
+}
+
+/* Polls fn every 100 ms (and once now) until it returns TRUE. */
+static void poll_arm(Pending p, const char *cmd, double secs,
+                     gboolean (*fn)(char **detail))
+{
+	arm(p, cmd, secs);
+	poll_fn = fn;
+	if (poll_tick(NULL))
+		poll_source = g_timeout_add(100, poll_tick, NULL);
+}
+
+static guint answer_idx;
+
+static gboolean poll_answer(char **detail)
+{
+	GCallback cb;
+	void *data;
+
+	if (req_n == 0)
+		return FALSE;
+	if (answer_idx >= req_n) {
+		*detail = g_strdup_printf("no button %u in %s", answer_idx, req_text);
+		return TRUE;
+	}
+	cb = req_cbs[answer_idx];
+	data = req_data;
+	*detail = g_strdup_printf("%s -> b%u", req_text, answer_idx);
+	req_clear();
+	if (cb)
+		((PurpleRequestActionCb)cb)(data, (int)answer_idx);
+	return TRUE;
+}
+
+static gboolean poll_request(char **detail)
+{
+	return req_n != 0;
+}
+
+static char *acct_prpl, *acct_user;
+static int want_exists, want_enabled, want_connected;
+
+static gboolean poll_account(char **detail)
+{
+	PurpleAccount *a = purple_accounts_find(acct_user, acct_prpl);
+
+	if (!want_exists)
+		return a == NULL;
+	if (!a)
+		return FALSE;
+	if (want_enabled >= 0 && purple_account_get_enabled(a, UI_ID) != want_enabled)
+		return FALSE;
+	if (want_connected >= 0 && purple_account_is_connected(a) != want_connected)
+		return FALSE;
+	return TRUE;
+}
+
+static void cmd_expect_account(const char *cmd, char *arg)
+{
+	char **tok = g_strsplit(arg, " ", -1);
+	double secs = 10;
+	int i;
+
+	want_exists = 1;
+	want_enabled = want_connected = -1;
+	if (g_strv_length(tok) < 2) {
+		fail_now(cmd, "usage 'expect-account PRPL USER [exists=] [enabled=] [connected=] [timeout=]'");
+		g_strfreev(tok);
+		return;
+	}
+	g_free(acct_prpl);
+	g_free(acct_user);
+	acct_prpl = g_strdup(tok[0]);
+	acct_user = g_strdup(tok[1]);
+	for (i = 2; tok[i]; i++) {
+		if (g_str_has_prefix(tok[i], "exists="))
+			want_exists = atoi(tok[i] + 7);
+		else if (g_str_has_prefix(tok[i], "enabled="))
+			want_enabled = atoi(tok[i] + 8);
+		else if (g_str_has_prefix(tok[i], "connected="))
+			want_connected = atoi(tok[i] + 10);
+		else if (g_str_has_prefix(tok[i], "timeout="))
+			secs = atof(tok[i] + 8);
+		else {
+			fail_now(cmd, "unknown key");
+			g_strfreev(tok);
+			return;
+		}
+	}
+	g_strfreev(tok);
+	poll_arm(P_POLL, cmd, secs, poll_account);
+}
+
+/* Runs the prpl action whose label contains text, as the Accounts menu does. */
+static void cmd_action(const char *cmd, const char *text)
+{
+	PurpleConnection *gc = purple_account_get_connection(account);
+	PurplePlugin *prpl = gc ? purple_connection_get_prpl(gc) : NULL;
+	GList *acts, *l;
+	gboolean hit = FALSE;
+
+	if (!prpl || !PURPLE_PLUGIN_HAS_ACTIONS(prpl)) {
+		fail_now(cmd, "account is not connected or has no actions");
+		return;
+	}
+	acts = PURPLE_PLUGIN_ACTIONS(prpl, gc);
+	for (l = acts; l; l = l->next) {
+		PurplePluginAction *act = l->data;
+
+		if (!hit && act && act->label && strstr(act->label, text)) {
+			act->plugin = prpl;
+			act->context = gc;
+			hit = TRUE;
+			act->callback(act);
+		}
+	}
+	for (l = acts; l; l = l->next)
+		if (l->data)
+			purple_plugin_action_free(l->data);
+	g_list_free(acts);
+	if (hit)
+		continue_ok(cmd, text);
+	else
+		fail_now(cmd, "no action with that label");
+}
+
+static void set_libpref(const char *spec)
+{
+	const char *eq = strchr(spec, '=');
+	char *path;
+
+	if (!eq || spec[1] != ':') {
+		fprintf(stderr, "bad libpref %s (want s:|i:|b:/path=value)\n", spec);
+		exit(2);
+	}
+	path = g_strndup(spec + 2, eq - spec - 2);
+	if (!purple_prefs_exists(path)) {
+		fprintf(stderr, "libpref %s does not exist (plugin not loaded?)\n", path);
+		exit(2);
+	}
+	if (spec[0] == 's')
+		purple_prefs_set_string(path, eq + 1);
+	else if (spec[0] == 'i')
+		purple_prefs_set_int(path, atoi(eq + 1));
+	else
+		purple_prefs_set_bool(path, atoi(eq + 1) != 0);
+	g_free(path);
+}
+
 static void assertion(const char *cmd, char *arg)
 {
 	gboolean dbg = g_str_has_suffix(cmd, "debug") || g_str_has_suffix(cmd, "debug-next");
@@ -1022,6 +1261,18 @@ static void do_command(char *line)
 			fprintf(out, "DBG %s: %s%s", d->cat, d->text, g_str_has_suffix(d->text, "\n") ? "" : "\n");
 		}
 		continue_ok("dump-debug", NULL);
+	} else if (!strcmp(cmd, "action")) {
+		cmd_action(cmd, arg);
+	} else if (!strcmp(cmd, "answer")) {
+		char *sp = strchr(arg, ' ');
+
+		secs = sp ? atof(sp + 1) : 10;
+		answer_idx = (guint)atoi(arg);
+		poll_arm(P_POLL, cmd, secs, poll_answer);
+	} else if (!strcmp(cmd, "no-request")) {
+		poll_arm(P_POLL_ABSENT, cmd, *arg ? atof(arg) : 3, poll_request);
+	} else if (!strcmp(cmd, "expect-account")) {
+		cmd_expect_account(cmd, arg);
 	} else if (g_str_has_prefix(cmd, "expect-") || g_str_has_prefix(cmd, "no-") ||
 	           g_str_has_prefix(cmd, "count-")) {
 		assertion(cmd, arg);
@@ -1110,7 +1361,7 @@ int main(int argc, char **argv)
 	const char *host = NULL, *script_path = NULL, *plugin_dir = NULL, *user_dir = NULL;
 	int port = 0, i;
 	char *tmpdir = NULL;
-	GPtrArray *prefs = g_ptr_array_new();
+	GPtrArray *prefs = g_ptr_array_new(), *libprefs = g_ptr_array_new();
 	static int sig_handle;
 
 	for (i = 1; i < argc; i++) {
@@ -1133,6 +1384,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(a, "--log")) { log_fmt = v; i++; }
 		else if (!strcmp(a, "--trust-cert")) { trust = v; i++; }
 		else if (!strcmp(a, "--pref")) { g_ptr_array_add(prefs, (gpointer)v); i++; }
+		else if (!strcmp(a, "--libpref")) { g_ptr_array_add(libprefs, (gpointer)v); i++; }
 		else { fprintf(stderr, "unknown option %s\n", a); return 2; }
 	}
 	if (!user || !pass) {
@@ -1171,6 +1423,7 @@ int main(int argc, char **argv)
 	purple_debug_set_enabled(TRUE);
 	purple_eventloop_set_ui_ops(&eventloop_ops);
 	purple_conversations_set_ui_ops(&conv_ops);
+	purple_request_set_ui_ops(&request_ops);
 	if (plugin_dir)
 		purple_plugins_add_search_path(plugin_dir);
 	if (!purple_core_init(UI_ID)) {
@@ -1178,8 +1431,11 @@ int main(int argc, char **argv)
 		return 2;
 	}
 	purple_set_blist(purple_blist_new());
+	purple_blist_set_ui_ops(&blist_ops);
 	purple_blist_load();
 	purple_prefs_load();
+	for (i = 0; i < (int)libprefs->len; i++)
+		set_libpref(g_ptr_array_index(libprefs, i));
 	if (log_fmt) {
 		purple_prefs_set_string("/purple/logging/format", log_fmt);
 		purple_prefs_set_bool("/purple/logging/log_ims", TRUE);

@@ -32,7 +32,13 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   flag noflag mtime timeout n text`), `expect-debug|no-debug|count-debug`
   (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
   `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`, `drop`
-  (shutdown() the c2s socket without a stream close, like a network drop).
+  (shutdown() the c2s socket without a stream close, like a network drop),
+  `action TEXT` (run a prpl action by label), `answer N`/`no-request`
+  (`purple_request_action()` has a recording UI: the script presses a
+  button), `expect-account PRPL USER enabled= connected= exists=` (any account
+  of the userdir) and `--libpref s:|i:|b:/path=V` (libpurple pref before the
+  main loop). Conversation events (`EV`) come from every account of the
+  userdir, and the buddy list has an empty UI so `blist.xml` is written.
   Exit 0 or 1.
 - `peer.py` is a scripted slixmpp peer (reference in its docstring):
   `--resource`, `--feature NS` (advertise a caps feature), `send|sendr|sendmany|correct|raw`, `wait|nowait`,
@@ -60,6 +66,10 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   server serves plain http, so they set `--pref b:allow_plain_http_upload=1`.
 - `test_correct.sh` covers XEP-0308 (incoming marker, forged ids, rooms,
   `/correct`, caps, offline delivery).
+- `test_migrate.sh` (M8): seeds prpl-jabber accounts and a buddy list in the
+  userdir, copies them with the prpl action or the startup offer and checks
+  `accounts.xml`, `blist.xml`, `prefs.xml`, state files and logs with
+  python; a real Pidgin under xvfb-run checks the offer when installed.
 - `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
   harness and peer primitive (works with both prpls). `test_sm.sh` covers
   stream management (prpl-xmpp2 only, else exit 77).

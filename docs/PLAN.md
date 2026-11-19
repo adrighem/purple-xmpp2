@@ -313,7 +313,22 @@ https is only covered by URL parsing unit tests (libpurple's SSL plugin does
 the TLS). Not done: streaming from disk and progress (v1 reads the file into
 memory), XEP-0363 v0.2 (`urn:xmpp:http:upload`) services.
 
-## M8: migration from prpl-jabber
+## M8: migration from prpl-jabber (done)
+
+Status: implemented (ARCHITECTURE 10). Tests: unit `test-migrate_map` (option
+mapping, list value check, username equality) and integration
+`test_migrate.sh`: seeded `accounts.xml`/`blist.xml` with an enabled original
+(saved password, alias, options, buddies, bookmark) and a disabled one
+(proxy, no password); the harness runs the prpl action (`action`, `answer`),
+the clone logs in and shows no history (hist1 in the archive, new1 live), the
+state file is `initial=cursor-only`, logs join `logs/jabber/<user>/`, a second
+run changes nothing, the startup offer (harness `--libpref` test hook): no
+dialog by default, Not now asks again, Never persists in `prefs.xml`, the
+action works after Never; and, when pidgin and xvfb-run exist, a real Pidgin
+(UI id `gtk-gaim`) makes the offer. Not done: no human clicked the Pidgin
+dialog (the test reads its debug log); the Pidgin account window is not
+refreshed by hand after the copy (libpurple's account-added and enabled
+signals do it).
 
 Acceptance (Pidgin under Xvfb with a prepared `accounts.xml` and `blist.xml`,
 or the harness calling `x2_migrate_run()` through a test command):
@@ -321,7 +336,7 @@ or the harness calling `x2_migrate_run()` through a test command):
   appears once; "Copy" creates an xmpp2 account with the same username,
   password, alias, resource, connection security and port; the original
   remains, disabled.
-- In the harness (UI id not `pidgin`) no dialog appears at startup; the prpl
+- In the harness (UI id not `gtk-gaim`) no dialog appears at startup; the prpl
   action still performs the copy.
 - An originally disabled prpl-jabber account yields a disabled clone and
   stays disabled.

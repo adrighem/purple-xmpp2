@@ -705,37 +705,57 @@ delete (resets to the first-run rule), and testable in `core/store.c` with a
 temp path. Account-level user choices (`mam_initial_days`,
 `mam_muc_threshold_days`, notices) are normal account options.
 
-## 10. Migration from prpl-jabber
+## 10. Migration from prpl-jabber (M8, done)
 
-`ext/migrate.c`. Libpurple loads protocol plugins during
-`purple_plugins_probe()`, before `purple_accounts_init()` (`core.c` 149 vs
-163), so the check is deferred with `purple_timeout_add(0)`.
+`ext/migrate.c` (module, startup offer, action, the loop over the
+originals), `ext/migrate_clone.c` (one account), `ext/migrate_blist.c`
+(buddy list entries) and the pure `core/migrate_map.c` (option mapping,
+username equality). Libpurple loads protocol plugins during
+`purple_plugins_probe()`, before the accounts are loaded (`core.c`), so
+`plugin_init` only arms a 2 s `purple_timeout_add_seconds()`; it fires in the
+main loop with the accounts and, in Pidgin, the buddy list window present.
 
 - Offer once, only when `purple_core_get_ui()` is `"gtk-gaim"` (Pidgin's
-  historical UI id, `pidgin/pidgin.h` 44; Finch,
-  the harness and other UIs never get an unsolicited dialog): if some
-  `prpl-jabber` account has no `prpl-xmpp2` twin (same username) and the pref
-  `/plugins/prpl/xmpp2/migration_offered` is false,
-  `purple_request_action()`: "Copy N XMPP accounts to XMPP (xmpp2)? The
-  originals are kept but disabled." Buttons: Copy, Not now, Never.
-- The same function is always available, in every UI, as the prpl action
-  "Copy XMPP accounts..." on any connected xmpp2 account.
-- Copy: username (JID/resource), saved password, alias, user info, buddy
-  icon, proxy info, and each protocol option that prpl-jabber declares
-  (`prpl_info->protocol_options` of the loaded prpl-jabber gives setting
-  name and type) and that we also declare. Copy `PurpleChat` blist nodes
-  (room bookmarks) with their components into the same group. The roster is
-  server side and needs no copy. Not copied: buddy notes, pounces, local
-  contact merges (documented).
-- If the original is enabled: enable the clone, disable the original (same
-  full JID on both would make the server kick one with a resource conflict,
-  in a loop). If the original is disabled, the clone stays disabled too.
-  Never delete. Idempotent: skips accounts that already have a twin.
-- Seed the state file with `initial=cursor-only`, so the first catch-up does
-  not re-show history prpl-jabber already logged (7.2).
-- Logs: libpurple derives the log directory from `list_icon()`
-  (`log.c` 350). We return `"jabber"`, so the clone writes to the same
-  `logs/jabber/<user>/` and the history viewer shows one continuous history.
+  historical UI id, `pidgin/pidgin.h` 44; Finch, the harness and other UIs
+  never get an unsolicited dialog) and the pref
+  `/plugins/prpl/xmpp2/migration_never` is false: if some `prpl-jabber`
+  account has no `prpl-xmpp2` twin, `purple_request_action()` asks "Copy N
+  XMPP accounts to XMPP (xmpp2)?" with Copy, Not now, Never. Never sets the
+  pref, Not now does nothing (asks again next start). Test hook: the pref
+  `/plugins/prpl/xmpp2/migration_offer_any_ui` makes any UI get the offer.
+- The same copy is always available as the prpl action "Copy XMPP
+  accounts to xmpp2..." (`jabber_actions()`, so on every connected xmpp2
+  account, every UI). It asks first (Copy, Cancel), tells the result with
+  `purple_notify_info()`, and says so when there is nothing to copy.
+- Clone: username (JID and resource), saved password (only if the original
+  remembers it; never logged), alias, user info, buddy icon path, check-mail
+  flag, proxy info, and each setting of `x2_migrate_map_options()`: the
+  options of the loaded prpl-jabber (`protocol_options`) that xmpp2 declares
+  under the same key with the same kind (string or list, int, bool). A value
+  a list option does not offer is skipped. libpurple cannot tell "unset" from
+  "default", so a getter is called twice with two different defaults: equal
+  answers mean the value is stored. Options that only one side has
+  (`unknown_to_xmpp2`) are dropped.
+- Buddy list (`migrate_blist.c`): groups are shared, every contact that has a
+  buddy of the original gets a contact of the clone with the same group,
+  local aliases (buddy and contact), and every `PurpleChat` (room bookmark)
+  is copied with its components, alias and Pidgin's auto-join and persistent
+  flags. Buddies are only added locally, nothing is sent: the roster is
+  server side and refreshes at the first login. Not copied: buddy notes,
+  pounces, contacts merged with buddies of other accounts.
+- Enable: the original is always disabled (`purple_account_set_enabled(orig,
+  ui, FALSE)`, which also signs it off); the clone is enabled afterwards only
+  if the original was enabled (the same full JID twice would make the server
+  kick one session with a resource conflict, in a loop). Never deleted.
+  Idempotent: an account is skipped when a `prpl-xmpp2` account with the
+  same username exists (bare JID case-insensitive, resource exact).
+- State: `[meta] initial=cursor-only` is written to the clone's state file
+  at creation (9), so the first catch-up only stores a cursor and shows no
+  history (7.2).
+- Logs: libpurple derives the log directory from the prpl's `list_icon()`
+  (`log.c` 350) and the normalised username, which drops the resource. We
+  return `"jabber"`, so the clone writes to the same `logs/jabber/<bare
+  jid>/` and the history viewer shows one continuous history.
 
 ## 11. Icons and UI
 

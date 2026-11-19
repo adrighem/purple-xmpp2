@@ -28,6 +28,7 @@ the server archive and shows it in the right conversation.
 | Delivery receipts | XEP-0184 | Implemented (M5), signal `xmpp2-receipt` and optional notice |
 | Chat markers | XEP-0333 | Implemented (M5), `displayed` sent on focus, signal `xmpp2-marker` |
 | Message correction | XEP-0308 | Implemented (M6): corrections shown as a new "corrected:" line, `/correct TEXT` to fix your last message |
+| Account migration from the built-in XMPP plugin | | Implemented (M8): copies accounts, buddy list and room bookmarks, see Using it |
 
 Limits for v1: receipts and chat markers are exposed as protocol support,
 signals (`xmpp2-receipt`, `xmpp2-marker`), and an optional notice line (account
@@ -90,13 +91,26 @@ look for **XMPP2** under Accounts, Manage Accounts, Add.
 
 ### Migrating an existing XMPP account
 
-In Pidgin, the plugin offers to migrate (clone) an existing XMPP account when
-you first enable it; other libpurple clients do not get this offer. You can
-always add an **XMPP2** account by hand with the same username, domain, and
-password. A cloned account starts from the current point in the archive and
-replays no history. Keep the original until you are happy, then disable or
-delete it. Do not enable both accounts at once: two sessions with the same
-resource conflict, so give the new account a different resource.
+Every connected XMPP2 account has an action under Accounts: **Copy XMPP
+accounts to xmpp2...**. In Pidgin the plugin also offers the same copy once
+at startup, when it finds XMPP accounts without an XMPP2 twin: **Copy**
+does it, **Not now** asks again next start, **Never** switches the offer
+off for good (the action stays).
+
+The copy takes the username (with resource), the saved password, alias, user
+info, buddy icon, proxy settings, every account option both plugins have
+(connection security, port, connect server, file transfer proxies and so on),
+the buddy list entries (groups, contacts, local aliases) and the room
+bookmarks, including auto-join. The original is kept but **disabled**, so
+two sessions with the same resource never fight; the copy is enabled only if
+the original was. Nothing is deleted, and running it again copies nothing
+that already has a twin (same username).
+
+The copy starts from the current point in the archive and replays no history,
+and it writes to the same `logs/jabber/<user>/` directory, so the history
+viewer shows one continuous history. Not copied: buddy notes, pounces, and
+contacts merged across several accounts. A password that was not saved is
+not saved on the copy either, you are asked at first login.
 
 ### Coexistence with built-in XMPP
 
