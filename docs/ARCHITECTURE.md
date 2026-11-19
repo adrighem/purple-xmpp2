@@ -325,6 +325,10 @@ Order of the inbound chain (registry order matters and is fixed):
    return `X2_DEFERRED` (ownership: see above). The
    queue is flushed to the UI (with dedup) on `LIVE`, on watchdog expiry and
    on stream teardown: a duplicate beats a lost message.
+   An archive result whose key (stanza-id or origin-id) matches an undelayed
+   message in the queue is dropped: a message archived after the catch-up
+   began but before the server ran the query comes both ways, and the live
+   copy is shown as it came, never flagged delayed.
 4. `correction`, `upload`, `receipts`, `markers` (table order): rewrite
    corrections, consume pure control messages (`<received/>`,
    `<displayed/>` without body).

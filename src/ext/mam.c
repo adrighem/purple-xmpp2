@@ -111,6 +111,28 @@ x2_mam_notice(X2MamArchive *a, const char *peer, const char *text)
 
 /* ---- inbound ---- */
 
+/*
+ * TRUE if a live (undelayed) copy of an archive result with key @a key or
+ * @a ikey is held in the catch-up queue.  A message archived after the
+ * catch-up began but before the server ran the query comes both live and
+ * as a result; the live copy is the one to show, as it came (not delayed).
+ */
+static gboolean
+queued_live(X2MamArchive *a, const char *key, const char *ikey)
+{
+	GList *l;
+
+	for (l = a->queue.head; l != NULL; l = l->next) {
+		const X2Msg *d = l->data;
+
+		if (d->delayed || d->key == NULL)
+			continue;
+		if (purple_strequal(d->key, key) || purple_strequal(d->key, ikey))
+			return TRUE;
+	}
+	return FALSE;
+}
+
 X2Verdict
 x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
                       const char *id)
@@ -155,6 +177,12 @@ x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
 
 	ikey = inner_key(m);
 	dup = x2_mam_key_seen(a, m->key) || x2_mam_key_seen(a, ikey);
+	if (!dup && queued_live(a, m->key, ikey)) {
+		g_free(ikey);
+		purple_debug_info(X2_MAM_DEBUG, "archive result %s is queued "
+		                  "live, shown live\n", id);
+		return X2_CONSUMED;
+	}
 	g_free(ikey);
 	if (dup) {
 		purple_debug_info(X2_MAM_DEBUG, "duplicate archive result %s\n", id);

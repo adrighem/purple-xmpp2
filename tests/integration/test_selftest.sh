@@ -79,6 +79,10 @@ $DEBUG_CHECKS
 disconnect
 SCRIPT
 kill "$BOB_PID" 2>/dev/null || true
+# A live message is never shown as delayed, also not while the MAM
+# catch-up of a fresh login returns the same message from the archive.
+grep -q '^EV recv .* flags=0x2 .* rawpong$' "$H_OUT" ||
+	fail "live rawpong shown as delayed"
 pass "raw stanza, expect-stanza, debug capture"
 
 # 5. MUC: peer and harness exchange room messages.
