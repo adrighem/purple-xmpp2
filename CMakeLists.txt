@@ -55,6 +55,7 @@ set(XMPP2_SOURCES
     src/ext/mam.c
     src/ext/mam_sync.c
     src/ext/markers.c
+    src/ext/mam_muc.c
     src/ext/msgctx.c
     src/ext/statefile.c
     src/ext/upload.c

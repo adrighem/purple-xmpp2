@@ -34,6 +34,7 @@
 #include "presence.h"
 #include "xdata.h"
 #include "data.h"
+#include "ext/ext.h"
 
 GList *jabber_chat_info(PurpleConnection *gc)
 {
@@ -270,6 +271,28 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
 {
 	JabberChat *chat;
 
+	chat = jabber_chat_new(js, room, server, handle, password, data);
+	if (chat == NULL)
+		return NULL;
+
+	/* The join presence reads the password from the components */
+	if (password && *password &&
+	    g_hash_table_lookup(chat->components, "password") == NULL)
+		g_hash_table_insert(chat->components, g_strdup("password"),
+		                    g_strdup(password));
+
+	/* A module may hold the join until it knows the room (MAM, M4) */
+	if (!x2_ext_chat_joining(js, chat))
+		jabber_chat_send_join(chat);
+
+	return chat;
+}
+
+void jabber_chat_send_join(JabberChat *chat)
+{
+	JabberStream *js = chat->js;
+	GHashTable *data = chat->components;
+
 	PurpleConnection *gc;
 	PurpleAccount *account;
 	PurpleStatus *status;
@@ -280,6 +303,7 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
 	int priority;
 
 	char *jid;
+	const char *password;
 
 	char *history_maxchars;
 	char *history_maxstanzas;
@@ -289,10 +313,6 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
 	struct tm history_since_datetime;
 	const char *history_since_string = NULL;
 
-	chat = jabber_chat_new(js, room, server, handle, password, data);
-	if (chat == NULL)
-		return NULL;
-
 	gc = js->gc;
 	account = purple_connection_get_account(gc);
 	status = purple_account_get_active_status(account);
@@ -301,10 +321,11 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
 	presence = jabber_presence_create_js(js, state, msg, priority);
 	g_free(msg);
 
-	jid = g_strdup_printf("%s@%s/%s", room, server, handle);
+	jid = g_strdup_printf("%s@%s/%s", chat->room, chat->server, chat->handle);
 	xmlnode_set_attrib(presence, "to", jid);
 	g_free(jid);
 
+	password           = g_hash_table_lookup(data, "password");
 	history_maxchars   = g_hash_table_lookup(data, "history_maxchars");
 	history_maxstanzas = g_hash_table_lookup(data, "history_maxstanzas");
 	history_seconds    = g_hash_table_lookup(data, "history_seconds");
@@ -350,10 +371,10 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
 		}
 	}
 
+	x2_ext_chat_join_presence(js, chat, x);
+
 	jabber_send(js, presence);
 	xmlnode_free(presence);
-
-	return chat;
 }
 
 void jabber_chat_join(PurpleConnection *gc, GHashTable *data)

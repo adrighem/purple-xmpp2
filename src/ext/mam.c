@@ -2,12 +2,13 @@
  * Copyright (C) 2026 purple-xmpp2 contributors
  */
 /**
- * @file mam.c XEP-0313 account archive: hooks, result checks and dedup
+ * @file mam.c XEP-0313 archives: hooks, result checks and dedup
  *
  * Inbound (ARCHITECTURE 6, steps 2, 3 and 6): archive results are verified
- * (core/mam_proto.c) and unwrapped; every 1:1 message is dropped when its
- * key was seen; live and carbon messages are held back while the catch-up
- * runs.  The catch-up itself is mam_sync.c.
+ * (core/mam_proto.c) and unwrapped; every message of an archive we follow
+ * (the account, joined MAM rooms) is dropped when its key was seen; live
+ * and carbon messages are held back while that archive's catch-up runs.
+ * The catch-up itself is mam_sync.c, the rooms mam_muc.c.
  */
 #include "xmpp2_internal.h"
 
@@ -29,8 +30,8 @@ x2_mam_state(JabberStream *js)
 	return js->x2 ? x2_ext_get_priv(js, &x2_ext_mam) : NULL;
 }
 
-static X2Store *
-store(X2MamState *st)
+X2Store *
+x2_mam_store(X2MamState *st)
 {
 	return x2_statefile_store(st->sf);
 }
@@ -51,43 +52,53 @@ inner_key(const X2Msg *m)
 }
 
 gboolean
-x2_mam_key_seen(X2MamState *st, const char *key)
+x2_mam_key_seen(X2MamArchive *a, const char *key)
 {
 	return key != NULL &&
-	       (x2_dedup_contains(st->js->x2->dedup, key) ||
-	        x2_store_ring_contains(store(st), st->own, key));
+	       (x2_dedup_contains(a->st->js->x2->dedup, key) ||
+	        x2_store_ring_contains(x2_mam_store(a->st), a->jid, key));
 }
 
 void
-x2_mam_remember(X2MamState *st, const X2Msg *m)
+x2_mam_remember(X2MamArchive *a, const X2Msg *m)
 {
 	if (m->key == NULL)
 		return;
-	x2_dedup_add(st->js->x2->dedup, m->key);
+	x2_dedup_add(a->st->js->x2->dedup, m->key);
 	/* Keys without a trusted stanza-id are the ones the cursor cannot
 	 * cover: keep them across restarts. */
 	if (m->stanza_id == NULL) {
-		x2_store_ring_add(store(st), st->own, m->key);
-		x2_statefile_touch(st->sf);
+		x2_store_ring_add(x2_mam_store(a->st), a->jid, m->key);
+		x2_statefile_touch(a->st->sf);
 	}
 }
 
 void
-x2_mam_advance_live(X2MamState *st, const X2Msg *m)
+x2_mam_advance_live(X2MamArchive *a, const X2Msg *m)
 {
-	if (st->frozen || st->phase != X2_MAM_LIVE || m->stanza_id == NULL ||
-	    !purple_strequal(m->archive, st->own))
+	if (a->frozen || a->phase != X2_MAM_LIVE || m->stanza_id == NULL ||
+	    !purple_strequal(m->archive, a->jid))
 		return;
-	x2_store_set_cursor(store(st), st->own, m->stanza_id, m->ts);
-	x2_statefile_touch(st->sf);
+	x2_store_set_cursor(x2_mam_store(a->st), a->jid, m->stanza_id, m->ts);
+	x2_statefile_touch(a->st->sf);
 }
 
 void
-x2_mam_notice(X2MamState *st, const char *peer, const char *text)
+x2_mam_notice(X2MamArchive *a, const char *peer, const char *text)
 {
-	PurpleAccount *account = purple_connection_get_account(st->js->gc);
+	PurpleAccount *account = purple_connection_get_account(a->st->js->gc);
 	PurpleConversation *conv;
 
+	if (a->room) {
+		/* Only into the open room: a left room gets no line */
+		conv = purple_find_conversation_with_account(
+			PURPLE_CONV_TYPE_CHAT, a->jid, account);
+		if (conv != NULL)
+			purple_conv_chat_write(PURPLE_CONV_CHAT(conv), "", text,
+			                       PURPLE_MESSAGE_SYSTEM |
+			                       PURPLE_MESSAGE_NO_LOG, time(NULL));
+		return;
+	}
 	conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, peer,
 	                                             account);
 	if (conv == NULL)
@@ -99,25 +110,32 @@ x2_mam_notice(X2MamState *st, const char *peer, const char *text)
 
 /* ---- inbound ---- */
 
-static X2Verdict
-inbound_result(X2MamState *st, X2Msg *m, xmlnode *inner, const char *id)
+X2Verdict
+x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
+                      const char *id)
 {
 	const char *type = xmlnode_get_attrib(inner, "type");
 	X2Dir dir;
+	X2Msg *d;
 	char *ikey;
 	gboolean dup;
 
-	x2_mam_sync_kick(st);
+	x2_mam_sync_kick(a);
 
-	if (purple_strequal(type, "groupchat") || purple_strequal(type, "error")) {
+	/* (a room result was forced to groupchat by its check) */
+	if (!a->room && (purple_strequal(type, "groupchat") ||
+	                 purple_strequal(type, "error"))) {
 		purple_debug_info(X2_MAM_DEBUG, "skipping archived %s message %s\n",
 		                  type, id);
 		return X2_CONSUMED;
 	}
 
-	dir = x2_mam_bare_equal(xmlnode_get_attrib(inner, "from"), st->own)
+	/* In a room our own messages come back from our nick, and libpurple
+	 * marks them as sent by the nick (serv_got_chat_in()), as live. */
+	dir = !a->room &&
+	      x2_mam_bare_equal(xmlnode_get_attrib(inner, "from"), a->st->own)
 	      ? X2_DIR_OUT : X2_DIR_IN;
-	x2_msg_set_inner(st->js, m, inner, X2_SRC_MAM, dir, st->own);
+	x2_msg_set_inner(a->st->js, m, inner, X2_SRC_MAM, dir, a->jid);
 	/* The archive id is the stanza-id: the result comes from the archive
 	 * we queried, checked above. */
 	g_free(m->stanza_id);
@@ -125,29 +143,72 @@ inbound_result(X2MamState *st, X2Msg *m, xmlnode *inner, const char *id)
 	g_free(m->key);
 	m->key = x2_dedup_make_key(id, dir == X2_DIR_OUT, m->peer, NULL);
 	m->delayed = TRUE;
-	st->page_ts = m->ts;
+	a->page_ts = m->ts;
 
-	if (st->kind == X2_MAMQ_CURSOR_ONLY || st->kind == X2_MAMQ_PROBE)
+	if (a->kind == X2_MAMQ_CURSOR_ONLY || a->kind == X2_MAMQ_PROBE)
 		return X2_CONSUMED;
-	if (purple_strequal(id, st->skip_id)) {
+	if (purple_strequal(id, a->skip_id)) {
 		purple_debug_info(X2_MAM_DEBUG, "skipping old cursor %s\n", id);
 		return X2_CONSUMED;
 	}
 
 	ikey = inner_key(m);
-	dup = x2_mam_key_seen(st, m->key) || x2_mam_key_seen(st, ikey);
+	dup = x2_mam_key_seen(a, m->key) || x2_mam_key_seen(a, ikey);
 	g_free(ikey);
 	if (dup) {
 		purple_debug_info(X2_MAM_DEBUG, "duplicate archive result %s\n", id);
-		x2_dedup_add(st->js->x2->dedup, m->key);
+		x2_dedup_add(a->st->js->x2->dedup, m->key);
 		return X2_CONSUMED;
 	}
 
-	if (st->kind == X2_MAMQ_LAST && m->peer != NULL &&
-	    g_hash_table_add(st->gap_noticed, g_strdup(m->peer)))
-		x2_mam_notice(st, m->peer, _("Older history skipped."));
+	/* The newest page: whether older history was skipped is known only
+	 * at its <fin/> (mam_sync.c flush_page()) */
+	if (a->kind == X2_MAMQ_LAST) {
+		d = x2_msg_dup(m);
+		if (d == NULL)
+			return X2_PASS;
+		g_queue_push_tail(&a->page, d);
+		return X2_DEFERRED;
+	}
 
-	x2_mam_remember(st, m);
+	x2_mam_remember(a, m);
+	return X2_PASS;
+}
+
+/* A <result/>: from the account archive (no from, or our bare JID) or from
+ * a room we are catching up; anything else is forged. */
+static X2Verdict
+inbound_result(X2MamState *st, X2Msg *m)
+{
+	const char *from = xmlnode_get_attrib(m->outer, "from");
+	X2MamArchive *a = NULL;
+	xmlnode *inner;
+	const char *id, *why;
+	X2MamCheck c;
+
+	if (from == NULL || purple_strequal(from, st->own)) {
+		a = st->acct;
+		c = x2_mam_result_check(m->outer, st->own, a->queryid, &inner,
+		                        &id, &why);
+	} else if ((a = x2_mam_muc_archive(st, from)) != NULL) {
+		c = x2_mam_room_result_check(m->outer, a->jid, a->queryid,
+		                             &inner, &id, &why);
+	} else {
+		c = x2_mam_result_check(m->outer, st->own, NULL, &inner, &id,
+		                        &why);
+	}
+
+	switch (c) {
+	case X2_MAM_VALID:
+		return x2_mam_inbound_result(a, m, inner, id);
+	case X2_MAM_FORGED:
+		purple_debug_warning(X2_MAM_DEBUG,
+		                     "forged MAM result from %s dropped: %s\n",
+		                     from ? from : "(none)", why);
+		return X2_CONSUMED;
+	case X2_MAM_NOT_RESULT:
+		break;
+	}
 	return X2_PASS;
 }
 
@@ -155,50 +216,39 @@ static X2Verdict
 mam_inbound(JabberStream *js, X2Msg *m)
 {
 	X2MamState *st = x2_mam_state(js);
-	xmlnode *inner;
-	const char *id, *why;
+	X2MamArchive *a;
 	X2Msg *d;
 
 	if (st == NULL)
 		return X2_PASS;
 
-	switch (x2_mam_result_check(m->outer, st->own, st->queryid, &inner,
-	                            &id, &why)) {
-	case X2_MAM_VALID:
-		return inbound_result(st, m, inner, id);
-	case X2_MAM_FORGED:
-		purple_debug_warning(X2_MAM_DEBUG,
-		                     "forged MAM result from %s dropped: %s\n",
-		                     xmlnode_get_attrib(m->outer, "from")
-		                     ? xmlnode_get_attrib(m->outer, "from") : "(none)",
-		                     why);
-		return X2_CONSUMED;
-	case X2_MAM_NOT_RESULT:
-		break;
-	}
+	if (xmlnode_get_child_with_namespace(m->outer, "result", NS_MAM))
+		return inbound_result(st, m);
 
-	/* Rooms are M4: only the account archive here */
-	if (!purple_strequal(m->archive, st->own))
+	/* The account archive or a joined MAM room; other rooms unchanged */
+	if (purple_strequal(m->archive, st->own))
+		a = st->acct;
+	else if ((a = x2_mam_muc_archive(st, m->archive)) == NULL)
 		return X2_PASS;
 
-	if (x2_mam_key_seen(st, m->key)) {
+	if (x2_mam_key_seen(a, m->key)) {
 		purple_debug_info(X2_MAM_DEBUG, "duplicate message %s dropped\n",
 		                  m->key);
 		return X2_CONSUMED;
 	}
 
-	if (st->phase == X2_MAM_SYNCING) {
+	if (a->phase == X2_MAM_SYNCING) {
 		d = x2_msg_dup(m);
 		if (d == NULL)
 			return X2_PASS;
-		g_queue_push_tail(&st->queue, d);
+		g_queue_push_tail(&a->queue, d);
 		purple_debug_info(X2_MAM_DEBUG, "queued during catch-up (%u)\n",
-		                  g_queue_get_length(&st->queue));
+		                  g_queue_get_length(&a->queue));
 		return X2_DEFERRED;
 	}
 
-	x2_mam_remember(st, m);
-	x2_mam_advance_live(st, m);
+	x2_mam_remember(a, m);
+	x2_mam_advance_live(a, m);
 	return X2_PASS;
 }
 
@@ -218,7 +268,7 @@ mam_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 	key = x2_dedup_make_key(NULL, TRUE, peer, o->id);
 	if (key != NULL) {
 		x2_dedup_add(js->x2->dedup, key);
-		x2_store_ring_add(store(st), st->own, key);
+		x2_store_ring_add(x2_mam_store(st), st->own, key);
 		x2_statefile_touch(st->sf);
 	}
 	g_free(key);
@@ -255,6 +305,7 @@ mam_account_options(GList **opts)
 	*opts = g_list_append(*opts, purple_account_option_int_new(
 		_("Days of history to fetch on first login (0: none)"),
 		"mam_initial_days", 1));
+	x2_mam_muc_account_options(opts);
 }
 
 static void
@@ -271,10 +322,9 @@ mam_stream_new(JabberStream *js)
 	st->js = js;
 	st->own = jabber_id_get_bare_jid(js->user);
 	st->sf = x2_statefile_open(purple_connection_get_account(js->gc));
-	st->gap_noticed = g_hash_table_new_full(g_str_hash, g_str_equal,
-	                                        g_free, NULL);
-	g_queue_init(&st->queue);
-	x2_store_ring_foreach(store(st), seed_dedup, js->x2->dedup);
+	st->acct = x2_mam_archive_new(st, st->own, FALSE);
+	x2_mam_muc_stream_new(st);
+	x2_store_ring_foreach(x2_mam_store(st), seed_dedup, js->x2->dedup);
 	x2_ext_set_priv(js, &x2_ext_mam, st);
 }
 
@@ -282,11 +332,17 @@ static void
 mam_stream_closing(JabberStream *js)
 {
 	X2MamState *st = x2_mam_state(js);
+	GHashTableIter it;
+	gpointer room;
 
 	if (st == NULL)
 		return;
-	if (st->phase == X2_MAM_SYNCING)
-		x2_mam_sync_finish(st, FALSE, NULL);
+	if (st->acct->phase == X2_MAM_SYNCING)
+		x2_mam_sync_finish(st->acct, FALSE, NULL);
+	g_hash_table_iter_init(&it, st->rooms);
+	while (g_hash_table_iter_next(&it, NULL, &room))
+		if (((X2MamArchive *)room)->phase == X2_MAM_SYNCING)
+			x2_mam_sync_finish(room, FALSE, NULL);
 	x2_statefile_flush(st->sf);
 }
 
@@ -297,16 +353,16 @@ mam_stream_free(JabberStream *js)
 
 	if (st == NULL)
 		return;
-	x2_mam_sync_free(st);
+	x2_mam_muc_stream_free(st);
+	x2_mam_archive_free(st->acct);
 	x2_statefile_close(st->sf);
-	g_hash_table_destroy(st->gap_noticed);
 	g_free(st->own);
 	g_free(st);
 	x2_ext_set_priv(js, &x2_ext_mam, NULL);
 }
 
-static gboolean
-has_feature(xmlnode *query, const char *var)
+gboolean
+x2_mam_has_feature(xmlnode *query, const char *var)
 {
 	xmlnode *f;
 
@@ -328,12 +384,12 @@ mam_server_info(JabberStream *js, const char *from, xmlnode *query)
 		g_free(own);
 		return;
 	}
-	if (is_own && has_feature(query, NS_MAM))
+	if (is_own && x2_mam_has_feature(query, NS_MAM))
 		st->supported = TRUE;
-	if (is_own && has_feature(query, X2_NS_MAM_EXTENDED))
-		st->extended = TRUE;
+	if (is_own && x2_mam_has_feature(query, X2_NS_MAM_EXTENDED))
+		st->acct->extended = TRUE;
 	if ((is_own || purple_strequal(from, js->user->domain)) &&
-	    has_feature(query, NS_CARBONS))
+	    x2_mam_has_feature(query, NS_CARBONS))
 		st->carbons_offered = TRUE;
 	g_free(own);
 }
@@ -346,10 +402,10 @@ mam_pre_presence(JabberStream *js)
 	if (st == NULL)
 		return;
 	if (st->supported)
-		x2_mam_sync_begin(st);
+		x2_mam_sync_begin(st->acct);
 	else {
 		purple_debug_info(X2_MAM_DEBUG, "account archive: no MAM support\n");
-		st->phase = X2_MAM_LIVE;
+		st->acct->phase = X2_MAM_LIVE;
 	}
 }
 
@@ -387,6 +443,9 @@ const X2Ext x2_ext_mam = {
 	.session_ready = mam_session_ready,
 	.inbound = mam_inbound,
 	.outbound = mam_outbound,
+	.chat_joining = x2_mam_muc_chat_joining,
+	.chat_join_presence = x2_mam_muc_join_presence,
+	.chat_joined = x2_mam_muc_chat_joined,
 	.stream_closing = mam_stream_closing,
 	.carbons_settled = mam_carbons_settled,
 };

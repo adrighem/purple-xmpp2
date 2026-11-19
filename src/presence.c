@@ -651,7 +651,11 @@ handle_presence_chat(JabberStream *js, JabberPresence *presence, xmlnode *packet
 		if (chat->muc) {
 			if (g_slist_find(presence->chat_info.codes, GINT_TO_POINTER(110))) {
 				is_our_resource = TRUE;
-				chat->joined = 0;
+				/* A nick change (303) is not a new join: the
+				 * chat_joined hook must not fire again (M4). */
+				if (!g_slist_find(presence->chat_info.codes,
+				                  GINT_TO_POINTER(303)))
+					chat->joined = 0;
 			}
 
 			if (g_slist_find(presence->chat_info.codes, GINT_TO_POINTER(301))) {

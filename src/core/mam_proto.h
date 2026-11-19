@@ -22,6 +22,9 @@
 /** RSM page size of the account archive catch-up. */
 #define X2_MAM_PAGE_SIZE 100
 
+/** RSM page size of a room archive catch-up, also its "last page". */
+#define X2_MAM_ROOM_PAGE_SIZE 50
+
 /** Parameters of one archive query (one RSM page). */
 typedef struct {
 	const char *queryid;   /* required, echoed in every <result/> */
@@ -67,6 +70,39 @@ typedef enum {
 X2MamCheck x2_mam_result_check(xmlnode *outer, const char *own_bare,
                                const char *queryid, xmlnode **inner,
                                const char **id, const char **why);
+
+/**
+ * Validates a <message/> carrying a room-archive result (ARCHITECTURE 8).
+ *
+ * Accepted only if the outer from is exactly @a room (never absent: that
+ * would be our own server answering for the account archive), the queryid
+ * equals @a queryid, the result has an id and a forwarded <message/>, and
+ * the inner from bare JID is @a room.  On X2_MAM_VALID the inner type is
+ * forced to groupchat: a room result is always delivered into the room,
+ * never as a 1:1 conversation.
+ *
+ * Parameters as for x2_mam_result_check(), with @a room the room's bare JID.
+ */
+X2MamCheck x2_mam_room_result_check(xmlnode *outer, const char *room,
+                                    const char *queryid, xmlnode **inner,
+                                    const char **id, const char **why);
+
+/** First query of a room archive catch-up (ARCHITECTURE 7.2). */
+typedef enum {
+	X2_MAM_ROOM_AFTER_CURSOR,  /* after=<cursor>, paged forward */
+	X2_MAM_ROOM_LAST_PAGE      /* the newest X2_MAM_ROOM_PAGE_SIZE only */
+} X2MamRoomStart;
+
+/**
+ * Chooses the first room query: after the cursor while it is newer than
+ * @a threshold_days, else (no cursor, no timestamp, too old, threshold 0)
+ * the last page only.
+ *
+ * @param cursor     The stored cursor of the room, or NULL.
+ * @param cursor_ts  Its timestamp, 0 if unknown.
+ */
+X2MamRoomStart x2_mam_room_start(const char *cursor, gint64 cursor_ts,
+                                 time_t now, int threshold_days);
 
 /**
  * TRUE if the inner from or to bare JID of an account-archive message is

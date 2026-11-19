@@ -243,6 +243,35 @@ x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 			e->outbound(js, message, o);
 }
 
+gboolean
+x2_ext_chat_joining(JabberStream *js, JabberChat *chat)
+{
+	const X2Ext *e;
+
+	g_return_val_if_fail(js != NULL && chat != NULL, FALSE);
+	if (js->x2 == NULL)
+		return FALSE;
+
+	FOR_EACH_EXT(e)
+		if (e->chat_joining && e->chat_joining(js, chat))
+			return TRUE;
+	return FALSE;
+}
+
+void
+x2_ext_chat_join_presence(JabberStream *js, JabberChat *chat, xmlnode *muc_x)
+{
+	const X2Ext *e;
+
+	g_return_if_fail(js != NULL && chat != NULL && muc_x != NULL);
+	if (js->x2 == NULL)
+		return;
+
+	FOR_EACH_EXT(e)
+		if (e->chat_join_presence)
+			e->chat_join_presence(js, chat, muc_x);
+}
+
 void
 x2_ext_chat_joined(JabberStream *js, JabberChat *chat)
 {
