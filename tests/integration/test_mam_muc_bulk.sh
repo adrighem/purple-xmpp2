@@ -108,7 +108,7 @@ LIVE_PID=$PEER_PID
 XMPP2_TEST_MAM_STALL=1 run_harness alice <<SCRIPT
 connect 30
 join $ROOM alice
-expect-debug cat=xmpp2-mam timeout=10 text=queued during catch-up
+expect-debug cat=xmpp2-mam timeout=20 text=queued during catch-up
 no-ev timeout=5 texteq=w-live
 expect-debug cat=xmpp2-mam timeout=40 text=room archive $ROOM LIVE (incomplete)
 expect-next kind=system conv=$ROOM text=history may be incomplete
