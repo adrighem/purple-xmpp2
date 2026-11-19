@@ -4,8 +4,9 @@
 /**
  * @file receipts.c XEP-0184 delivery receipts (ARCHITECTURE 7.4)
  *
- * Outgoing 1:1 messages ask for a receipt, live incoming requests from
- * contacts that can see our presence are answered, incoming receipts for
+ * Outgoing 1:1 messages ask for a receipt, live incoming requests (also
+ * those delivered from the server's offline store) from contacts that can
+ * see our presence are answered, incoming receipts for
  * messages we asked about raise the "xmpp2-receipt" signal.
  */
 #include "xmpp2_internal.h"
@@ -15,7 +16,6 @@
 #include "debug.h"
 #include "signals.h"
 
-#include "buddy.h"
 #include "core/dedup.h"
 #include "core/receipt_parse.h"
 #include "ext/ext.h"
@@ -126,12 +126,11 @@ answer_request(JabberStream *js, const char *from, const char *id)
 {
 	char *bare = jabber_get_bare_jid(from);
 	char *own = jabber_id_get_bare_jid(js->user);
-	JabberBuddy *jb = jabber_buddy_find(js, bare, FALSE);
 	xmlnode *received;
 
 	if (purple_strequal(bare, own)) {
 		purple_debug_info(LOG, "not answering our own message %s\n", id);
-	} else if (jb == NULL || !(jb->subscription & JABBER_SUB_FROM)) {
+	} else if (!x2_peer_sees_us(js, bare)) {
 		purple_debug_info(LOG, "not answering request %s from %s: "
 		                  "no presence subscription\n", id, bare);
 	} else {
@@ -178,8 +177,12 @@ receipts_answer_inbound(JabberStream *js, X2Msg *m)
 	const char *from = xmlnode_get_attrib(m->msg, "from");
 	char *id;
 
-	/* never for archive results, carbons or delayed (offline) messages */
-	if (!x2_msg_is_live_incoming(m) || from == NULL)
+	/*
+	 * Never for archive results or carbons.  A message from the server's
+	 * offline store (delayed) is still a live stanza: its sender is waiting
+	 * for the receipt, and gets it when we log in.
+	 */
+	if (m->src != X2_SRC_LIVE || m->dir != X2_DIR_IN || from == NULL)
 		return X2_PASS;
 	id = x2_receipt_request_id(m->msg);
 	if (id != NULL) {

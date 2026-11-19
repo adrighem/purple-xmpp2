@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 purple-xmpp2 contributors
 # M5: chat markers (XEP-0333) and the disco features of M5. Harness (alice)
 # against peers bob and carol. Run with:
 #   PRPL=prpl-xmpp2 PLUGIN_DIR=build tests/integration/test_markers.sh
@@ -22,6 +24,14 @@ FEAT=(--feature urn:xmpp:receipts --feature urn:xmpp:chat-markers:0)
 markable() { # ID TEXT
 	echo "raw <message to='alice@localhost' type='chat' id='$1'><body>$2</body><markable $MARK/></message>"
 }
+
+# 0. bob and alice subscribe to each other (displayed goes to contacts that
+# see our presence only). The harness cannot approve a subscription request,
+# so a second alice resource (slixmpp auto-approves) does.
+PEER_RESOURCE=phone peer_bg "$WORK/phone.log" alice --stay 6
+PHONE_PID=$PEER_PID
+run_peer bob --do "befriend alice@localhost" --do "sleep 4" >/dev/null
+wait "$PHONE_PID" || true
 
 # 1. Displayed marker: one for the newest markable message when the
 # conversation is focused, none for a second focus, a new one after a new
@@ -81,6 +91,24 @@ SCRIPT
 wait "$BOB_PID" || { cat "$WORK/bob2.log"; fail "bob peer failed"; }
 wait "$CAROL_PID" || { cat "$WORK/carol.log"; fail "carol peer failed"; }
 pass "xmpp2-marker signal and notice for ours, forged marker ignored"
+
+# 2b. A stranger's markable message gets no displayed (no presence
+# subscription, same gate as the receipts).
+peer_bg "$WORK/carol2.log" carol --stay 1 "${FEAT[@]}" --do "wait go-s" \
+	--do "$(markable mk-s s1)" \
+	--do "sleep 4" --do "no-stanza <displayed"
+CAROL_PID=$PEER_PID
+run_harness alice <<SCRIPT
+connect 30
+send carol@localhost go-s
+wait s1 20
+focus carol@localhost
+sleep 4
+no-debug timeout=1 cat=xmpp2-markers text=sent displayed
+disconnect
+SCRIPT
+wait "$CAROL_PID" || { cat "$WORK/carol2.log"; fail "displayed sent to a stranger"; }
+pass "no displayed marker for a contact without presence subscription"
 
 # 3. Caps: both namespaces are advertised (disco of the harness, run by bob
 # in step 1).

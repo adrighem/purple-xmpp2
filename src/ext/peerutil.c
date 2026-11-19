@@ -29,6 +29,17 @@ x2_peer_is_occupant(JabberStream *js, const char *jid)
 }
 
 gboolean
+x2_peer_sees_us(JabberStream *js, const char *jid)
+{
+	char *bare = jabber_get_bare_jid(jid);
+	JabberBuddy *jb = bare ? jabber_buddy_find(js, bare, FALSE) : NULL;
+	gboolean sees = jb != NULL && (jb->subscription & JABBER_SUB_FROM);
+
+	g_free(bare);
+	return sees;
+}
+
+gboolean
 x2_peer_wants(JabberStream *js, const char *jid, const char *ns)
 {
 	JabberID *id;

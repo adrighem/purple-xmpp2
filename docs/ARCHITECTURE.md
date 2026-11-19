@@ -532,9 +532,12 @@ known from caps and lacks `urn:xmpp:receipts`, or is a room occupant
 256 entry set. Incoming request (answered by the `receipts-answer` entry,
 which runs before `mam`, so a live message queued or deduplicated during
 the MAM catch-up is still answered, on arrival): reply
-`<received id=.../>` to the full JID only when `src=LIVE`, `type!='groupchat'`
-and the sender is in the roster with presence subscription (no presence
-leak to strangers; same as Gajim). Incoming `<received/>`: emit the purple
+`<received id=.../>` to the full JID only when `src=LIVE` and `dir=IN`
+(a stanza from the server's offline store, `delayed`, is still LIVE: its
+sender is waiting for the receipt, so it gets it at login; MAM results and
+carbons never do), `type!='groupchat'` and the sender is in the roster with
+presence subscription (no presence leak to strangers; same as Gajim; the
+check is `x2_peer_sees_us()`, shared with markers). Incoming `<received/>`: emit the purple
 signal `xmpp2-receipt` (account, bare peer, id), only for a (peer, id) we
 asked for and only when `x2_msg_is_live_incoming()`. Pure receipts are
 consumed whatever their source. Pidgin 2 cannot decorate an
@@ -548,7 +551,10 @@ can render ticks from the signals later.
 Implemented in `ext/markers.c`. Outgoing messages get `<markable/>` under the
 same caps rule as receipts. Incoming markable messages (live and MAM, not
 carbons: the other device marks those) record the newest per contact (by
-`ts`); a `displayed` is sent to the bare JID at most once per remembered id.
+`ts`); a `displayed` is sent to the bare JID at most once per remembered id,
+and only to contacts with presence subscription FROM (`x2_peer_sees_us()`,
+the receipts gate): only those are recorded, in a table capped at 256
+contacts that drops the least recently updated one.
 Sending `displayed`: connect to
 `conversation-updated` with `PURPLE_CONV_UPDATE_UNSEEN`; Pidgin sets the
 conversation data `unseen-count` to 0 when the user focuses the window
