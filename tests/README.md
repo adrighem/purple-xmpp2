@@ -31,8 +31,9 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `expect-ev|expect-next|no-ev|count-ev` with filters (`kind conv who ctype
   flag noflag mtime timeout n text`), `expect-debug|no-debug|count-debug`
   (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
-  `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`, `drop`
-  (shutdown() the c2s socket without a stream close, like a network drop),
+  `cmd`, `correct`, `upload|upload-fail|upload-drop`, `logcount`, `pref`,
+  `drop` (shutdown() the c2s socket without a stream close, like a network
+  drop),
   `action TEXT` (run a prpl action by label), `answer N`/`no-request`
   (`purple_request_action()` has a recording UI: the script presses a
   button), `expect-account PRPL USER enabled= connected= exists=` (any account

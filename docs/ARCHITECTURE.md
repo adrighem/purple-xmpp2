@@ -596,7 +596,9 @@ request while it sends it, so peak use is up to about twice the file size.
 The transfer is blocking only for the file read; the PUT is asynchronous.
 Streaming from disk and progress are later. In-flight uploads live in the
 module's per-stream state (not in `js->file_transfers`, whose entries the SI
-code casts to its own struct) and are cancelled when the stream closes.
+code casts to its own struct) and are cancelled in the `stream_closing`
+hook, while `js->iq_callbacks` still exists (a slot IQ callback is removed
+on cancel); `stream_free` only checks that none is left.
 Receiving needs nothing new: `jm_body_with_oob()` already shows the URL.
 
 ### 7.8 Stream management (XEP-0198), audit result
