@@ -155,19 +155,35 @@ sm_arm_idle_request(JabberStream *js, SmSession *s)
 	                                      purple_connection_get_account(js->gc));
 }
 
-/* Tells the user about one unacked outgoing message. */
+/* A <message> with a body and a recipient: what the user may be told about */
 static gboolean
-sm_report_unacked(PurpleAccount *account, xmlnode *stanza)
+sm_is_reportable(xmlnode *stanza)
 {
-	const char *to = xmlnode_get_attrib(stanza, "to");
-	const char *type = xmlnode_get_attrib(stanza, "type");
-	xmlnode *body = xmlnode_get_child(stanza, "body");
+	return purple_strequal(stanza->name, "message")
+	       && xmlnode_get_child(stanza, "body") != NULL
+	       && xmlnode_get_attrib(stanza, "to") != NULL;
+}
+
+static void
+sm_item_free(gpointer item)
+{
+	if (item != NULL)
+		xmlnode_free(item);
+}
+
+/* Tells the user about one unacked outgoing message (NULL: not a message). */
+static gboolean
+sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt)
+{
+	const char *to, *type;
 	PurpleConversation *conv = NULL;
 	char *text, *bare, *escaped, *line;
 
-	if (!purple_strequal(stanza->name, "message") || body == NULL || to == NULL)
+	if (stanza == NULL || !sm_is_reportable(stanza))
 		return FALSE;
-	text = xmlnode_get_data(body);
+	to = xmlnode_get_attrib(stanza, "to");
+	type = xmlnode_get_attrib(stanza, "type");
+	text = xmlnode_get_data(xmlnode_get_child(stanza, "body"));
 	if (text == NULL)
 		return FALSE;
 	bare = jabber_get_bare_jid(to);
@@ -185,9 +201,7 @@ sm_report_unacked(PurpleAccount *account, xmlnode *stanza)
 			                               bare ? bare : to);
 	}
 	escaped = g_markup_escape_text(text, -1);
-	line = g_strdup_printf(
-		_("Connection lost: this message may not have been delivered: %s"),
-		escaped);
+	line = g_strdup_printf(fmt, escaped);
 	if (conv != NULL) {
 		purple_conversation_write(conv, NULL, line,
 		                          PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_ERROR,
@@ -204,6 +218,29 @@ sm_report_unacked(PurpleAccount *account, xmlnode *stanza)
 	return TRUE;
 }
 
+/* Reports and forgets everything still unacked; @a fmt takes the text. */
+static void
+sm_report_queue(PurpleAccount *account, SmSession *s, const char *why,
+                const char *fmt)
+{
+	GList *items, *l;
+	guint32 unacked;
+	guint messages = 0;
+
+	unacked = x2_sm_state_unacked(s->st);
+	items = x2_sm_state_take_queue(s->st);
+	for (l = items; l != NULL; l = l->next) {
+		if (sm_report_unacked(account, l->data, fmt))
+			messages++;
+	}
+	g_list_free_full(items, sm_item_free);
+	purple_debug_info(SM_DBG,
+	                  "%s with %u unacked stanzas "
+	                  "(%u messages reported, %u untracked)\n",
+	                  why, unacked, messages, x2_sm_state_evicted(s->st));
+	x2_sm_state_reset(s->st, 0, 0);
+}
+
 /* "connection-error": report and forget everything still unacked. */
 static void
 sm_connection_error_cb(PurpleConnection *gc, PurpleConnectionError reason,
@@ -211,24 +248,11 @@ sm_connection_error_cb(PurpleConnection *gc, PurpleConnectionError reason,
 {
 	PurpleAccount *account = purple_connection_get_account(gc);
 	SmSession *s = g_hash_table_lookup(sm_sessions, account);
-	GList *items, *l;
-	guint32 unacked;
-	guint messages = 0;
 
 	if (s == NULL)
 		return;
-	unacked = x2_sm_state_unacked(s->st);
-	items = x2_sm_state_take_queue(s->st);
-	for (l = items; l != NULL; l = l->next) {
-		if (sm_report_unacked(account, l->data))
-			messages++;
-	}
-	g_list_free_full(items, (GDestroyNotify)xmlnode_free);
-	purple_debug_info(SM_DBG,
-	                  "connection lost with %u unacked stanzas "
-	                  "(%u messages reported, %u untracked)\n",
-	                  unacked, messages, x2_sm_state_evicted(s->st));
-	x2_sm_state_reset(s->st, 0, 0);
+	sm_report_queue(account, s, "connection lost",
+		_("Connection lost: this message may not have been delivered: %s"));
 }
 
 void
@@ -272,9 +296,12 @@ jabber_sm_close(JabberStream *js)
 
 	if (s == NULL)
 		return;
+	/* After a connection error the queue is already empty. */
 	if (x2_sm_state_unacked(s->st) > 0)
-		purple_debug_info(SM_DBG, "closing with %u unacked stanzas\n",
-		                  x2_sm_state_unacked(s->st));
+		sm_report_queue(purple_connection_get_account(js->gc), s,
+			"signed off",
+			_("Signed off before the server confirmed this message, it "
+			  "may not have been delivered: %s"));
 	g_hash_table_remove(sm_sessions, purple_connection_get_account(js->gc));
 }
 
@@ -405,12 +432,13 @@ jabber_sm_enable(JabberStream *js)
 	/* A new session never resends the queue of an earlier one: the server
 	 * may have handled those stanzas already (ARCHITECTURE 7.8). */
 	stale = x2_sm_state_reset(s->st, 0, 0);
-	purple_debug_info(SM_DBG, "enable requested (resume=true), fresh "
+	/* No resume='true' until M10 implements <resume/>: the server must
+	 * not keep a session around that we never resume. */
+	purple_debug_info(SM_DBG, "enable requested (no resume), fresh "
 	                  "session, %u stale stanzas dropped, nothing resent\n",
 	                  stale);
 	enable = xmlnode_new("enable");
 	xmlnode_set_namespace(enable, NS_STREAM_MANAGEMENT);
-	xmlnode_set_attrib(enable, "resume", "true");
 	jabber_send(js, enable);
 	xmlnode_free(enable);
 	js->sm_state = SM_REQUESTED;
@@ -427,8 +455,10 @@ jabber_sm_outbound(JabberStream *js, xmlnode *packet)
 		return;
 	s = sm_session_lookup(js);
 	g_return_if_fail(s != NULL);
-	/* Counted from <enable/> on: the server counts from there too. */
-	x2_sm_state_sent(s->st, xmlnode_copy(packet));
+	/* Counted from <enable/> on: the server counts from there too.  Only
+	 * a message with a body is ever reported, so only that is copied. */
+	x2_sm_state_sent(s->st, sm_is_reportable(packet)
+	                        ? xmlnode_copy(packet) : NULL);
 	if (js->sm_state != SM_ENABLED)
 		return;
 	if (x2_sm_state_need_request(s->st, SM_REQUEST_EVERY))

@@ -610,7 +610,8 @@ Receiving needs nothing new: `jm_body_with_oob()` already shows the URL.
 
 ### 7.8 Stream management (XEP-0198), audit result
 
-Upstream `stream_management.c` implements counting and acks only. Findings:
+Upstream `stream_management.c` implements counting and acks only. Findings
+(upstream):
 
 1. No resumption: sends `<enable/>` without `resume='true'`, ignores
    `<enabled id max>`, never sends `<resume>`.
@@ -630,8 +631,18 @@ M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
   in a table keyed by `PurpleAccount`, not in `JabberStream`, so M10 can
   keep it across a transport reconnect. `jabber_close()` frees it via
   `jabber_sm_close()`; `JabberStream` keeps only `sm_state`.
-- `<enable resume='true'/>` is sent and `<enabled/>` parsed and logged
-  (debug `xmpp2-sm`), but never used for `<resume/>` until M10.
+- `<enable/>` is sent without `resume='true'` (tech lead decision: the
+  server must not hold a session we never resume) until M10 implements
+  `<resume/>`; `<enabled/>` is parsed and logged (debug `xmpp2-sm`).
+- Only `<message>` stanzas with a body and a `to` are copied into the
+  unacked queue (they are all that is ever reported); other stanzas queue a
+  NULL placeholder that keeps the sequence numbers.
+- Raw XML from `send_raw` (the XML console) is parsed while SM is on (a
+  wrapper element allows several top-level stanzas in one write) and each
+  stanza is counted like any other, else the server's `h` overtakes ours and
+  the stream ends with `handled-count-too-high`. Input that is not a
+  sequence of complete elements is refused (not sent) with an error
+  dialog while SM is on.
 - Counters wrap modulo 2^32. Each queued stanza carries its sequence number,
   so an ack trims exactly the stanzas in `(acked, h]` even after the queue
   overflowed. An `h` beyond what was sent ends the stream with
@@ -649,7 +660,9 @@ M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
   may not have been delivered: TEXT"; then the queue is emptied. Tech lead
   decision for v1: the user is told instead of an automatic resend; the
   MAM-checked resend once planned here is left for M10/M3 follow-up if
-  wanted. A clean sign-off reports nothing.
+  wanted. A clean sign-off reports unacked messages the same way ("Signed
+  off before the server confirmed this message, it may not have been
+  delivered: TEXT"): the stream close does not wait for a last ack.
 
 Resumption (M10) is limited by Pidgin itself: on a NetworkManager "down"
 event Pidgin calls `purple_account_disconnect()` on every account

@@ -350,7 +350,8 @@ or the harness calling `x2_migrate_run()` through a test command):
 
 Status: implemented (ARCHITECTURE 7.8). Tests: `tests/unit/test_smstate.c`
 (wraparound, exact trimming, batching, bounded queue) and
-`tests/integration/test_sm.sh` (enable+resume parsed, 4 `<r/>` for 20
+`tests/integration/test_sm.sh` (plain `<enable/>`, `<enabled/>` parsed,
+XML console stanzas counted, sign-off report, 4 `<r/>` for 20
 messages, harness `drop` with one unacked message: notice shown, bob gets
 it exactly once, nothing resent). `<failed h>` trimming is unit tested and
 logged; Prosody cannot be made to send `<failed h>` on enable, so there is
@@ -358,8 +359,9 @@ no integration case for it. Unacked messages are reported to the user
 rather than resent (tech lead decision).
 
 Acceptance:
-- Peer `streamfeatures`-style check plus debug log: `<enable resume='true'/>`
-  sent, `<enabled id max>` parsed and logged.
+- Peer `streamfeatures`-style check plus debug log: `<enable/>` sent
+  (no `resume='true'` until M10, tech lead decision after review),
+  `<enabled id max>` parsed and logged.
 - Sending 20 messages in a burst produces at most 5 `<r/>` (was 20).
 - Unit-style test of `h` arithmetic across 2^32 wrap.
 - Kill the TCP connection (`ss -K` or podman network disconnect) while one
