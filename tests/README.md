@@ -37,7 +37,7 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 - `peer.py` is a scripted slixmpp peer (reference in its docstring):
   `--resource`, `send|sendr|sendmany|correct|raw`, `wait|nowait`,
   `expect-stanza|no-stanza|count-stanza|expect-out` (regex on raw stanzas),
-  `receipts|markers|carbons on|off`, `mam`, `disco`, `join`, `upload`,
+  `receipts|markers|carbons on|off`, `bind NAME REGEX` (store group 1 of a stanza, `${NAME}` in later actions), `mam`, `disco`, `join`, `upload`,
   `sha256`, `befriend`, `abort`, `--stay SECS`. It can send while the harness
   is offline, which is the basis for MAM catch-up tests.
 - `lib.sh` has shared helpers. A feature test is just:
@@ -58,6 +58,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 - `test_upload.sh` (XEP-0363: contact, room, size limit, http opt-in) and
   `test_upload_fallback.sh` (profile `noupload`, SI fallback). The test
   server serves plain http, so they set `--pref b:allow_plain_http_upload=1`.
+- `test_correct.sh` covers XEP-0308 (incoming marker, forged ids, rooms,
+  `/correct`, caps, offline delivery).
 - `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
   harness and peer primitive (works with both prpls). `test_sm.sh` covers
   stream management (prpl-xmpp2 only, else exit 77).
