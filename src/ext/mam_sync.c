@@ -30,9 +30,12 @@
 #include "ext/mam.h"
 #include "iq.h"
 
-/* Test hook: build and log the query but never send it, so the watchdog
- * fires (tests/integration/test_mam_recovery.sh). */
+#ifdef XMPP2_TEST_HOOKS
+/* Test hook (cmake -DXMPP2_TEST_HOOKS=ON only): build and log the query but
+ * never send it, so the watchdog fires (tests/integration/test_mam_recovery.sh,
+ * test_mam_muc_bulk.sh). */
 #define X2_MAM_STALL_ENV "XMPP2_TEST_MAM_STALL"
+#endif
 
 static X2Store *
 store(X2MamArchive *a)
@@ -385,11 +388,13 @@ x2_mam_sync_query(X2MamArchive *a, X2MamQueryKind kind, const char *after,
 	                  kind == X2_MAMQ_PROBE ? "probe" : "cursor-only",
 	                  after ? after : "-", (long)start);
 
+#ifdef XMPP2_TEST_HOOKS
 	if (g_getenv(X2_MAM_STALL_ENV) != NULL) {
 		purple_debug_warning(X2_MAM_DEBUG, "test hook: query not sent\n");
 		jabber_iq_free(iq);
 		return;
 	}
+#endif
 	jabber_iq_send(iq);
 }
 

@@ -375,9 +375,12 @@ Stream teardown in any state flushes the queue to the UI before the
 `JabberStream` is freed (`stream_closing` hook). Implementation (M3):
 `ext/mam.c` (hooks, result checks, dedup), `ext/mam_sync.c` (this state
 machine), `ext/statefile.c` (9), `core/mam_proto.c`, `core/store.c`. Debug
-category `xmpp2-mam`. Test hook: with `XMPP2_TEST_MAM_STALL` set in the
-environment the query is built and logged but never sent, so the watchdog
-and teardown paths can be tested.
+category `xmpp2-mam`. Test hook (compiled in only with
+`cmake -DXMPP2_TEST_HOOKS=ON`, as in CI; release builds ignore the
+variable): with `XMPP2_TEST_MAM_STALL` set in the environment the query is
+built and logged but never sent, so the watchdog and teardown paths can be
+tested. ctest passes `XMPP2_TEST_HOOKS_BUILT` to the integration tests; the
+stall parts exit 77 (skipped) without it.
 
 Queries (`core/mam_proto.c`): `urn:xmpp:mam:2` form with optional `start`
 and `with`, RSM `<max>` 100 and `<after>`/`<before/>`. Page responses are

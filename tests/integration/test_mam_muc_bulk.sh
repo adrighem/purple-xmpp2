@@ -98,7 +98,9 @@ disconnect
 SCRIPT
 pass "stale cursor inside the last page: no repeats, no notice (item 3)"
 
-# Watchdog: the room query is never answered; after about 30 s the room
+test_hooks_enabled || { echo "SKIP: room watchdog needs -DXMPP2_TEST_HOOKS=ON"; exit 77; }
+
+# Watchdog (XMPP2_TEST_HOOKS): the room query is never answered; after about 30 s the room
 # goes LIVE, the queued live message appears after one notice.
 peer_bg "$WORK/live.log" carol --stay 45 --do "join $ROOM carol" \
 	--do "sleep 12" --do "groupsend $ROOM w-live"
