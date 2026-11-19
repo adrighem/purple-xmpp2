@@ -577,7 +577,11 @@ request, and an empty file is refused. Then:
    a hand-built binary-safe request (`Host`, `User-Agent`, `Content-Type`,
    `Content-Length`, slot headers, `Connection: close`): honours the account
    proxy, https through the purple SSL plugin (default port 443, checked),
-   `include_headers=TRUE` to read the status line; any 2xx is success.
+   `include_headers=TRUE` to read the status line, `max_len` 64 KiB for the
+   response. Only `201 Created` is success; anything else, including a
+   redirect, is a failure: libpurple follows any `Location` header with a
+   GET (possibly over plain http) and that GET could answer 200. A server
+   that sends `Location` even with its 201 is therefore not supported.
 4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
    `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
    (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1
@@ -586,13 +590,16 @@ request, and an empty file is refused. Then:
 Errors reach the user through `purple_xfer_error()` ("File upload of X
 failed: reason") and cancel the transfer; the same text is logged under
 `xmpp2-upload`. Logging: never the slot URLs (signed tokens) or headers; the
-only URL data in our log is the PUT host and scheme. libpurple itself logs
-the fetched URL at debug level under `util`, which we cannot suppress with
-this API.
+only URL data in our log is the PUT host and scheme. `max_len` must be
+positive: with -1 libpurple logs the full signed PUT URL at error level
+("Defaulting max download from URL"). libpurple still logs the URL and the
+request head under `util` when unsafe debugging is on (and the target of a
+redirect, which then fails), which we cannot suppress with this API.
 
 Memory: v1 reads the file into one buffer (request head plus body), bounded
-by `max-file-size` and the 100 MiB cap, and libpurple may hold a copy of the
-request while it sends it, so peak use is up to about twice the file size.
+by `max-file-size` and the 100 MiB cap. libpurple copies the request, and
+our buffer is freed as soon as the fetch call returns, so peak use is about
+twice the file size for that moment only, once the file size afterwards.
 The transfer is blocking only for the file read; the PUT is asynchronous.
 Streaming from disk and progress are later. In-flight uploads live in the
 module's per-stream state (not in `js->file_transfers`, whose entries the SI
