@@ -24,7 +24,7 @@ the server archive and shows it in the right conversation.
 | Message archive catch-up | XEP-0313 | Planned (headline feature) |
 | Message carbons | XEP-0280 | Planned |
 | Stream management | XEP-0198 | Planned |
-| HTTP file upload | XEP-0363 | Planned |
+| HTTP file upload | XEP-0363 | Implemented (M7), falls back to SI file transfer |
 | Delivery receipts | XEP-0184 | Planned |
 | Chat markers | XEP-0333 | Planned |
 | Message correction | XEP-0308 | Planned |

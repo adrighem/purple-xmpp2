@@ -459,22 +459,58 @@ Advertise `urn:xmpp:message-correct:0`.
 
 ### 7.7 HTTP File Upload (XEP-0363)
 
-Discovery: in `server_info`, an item of our own server's `disco#items`
-(foreign upload services are never offered) advertising
-`urn:xmpp:http:upload:0`, with `max-file-size` from its x-data. `send_file`
-and `chat_send_file` create a `PurpleXfer` (type SEND) with our own ops:
-on init, check size, request a slot (`<request filename size
-content-type/>`), receive `<put url>` + allowed headers (`Authorization`,
-`Cookie`, `Expires` only) and `<get url>`, then upload with
-`purple_util_fetch_url_request_len_with_account()` using a hand-built
-`PUT` request (binary-safe length variant, honours the account proxy, HTTPS
-via the purple SSL plugin), `include_headers=TRUE` to read the status line.
-On 2xx: send a message whose body is the GET URL plus
-`<x xmlns='jabber:x:oob'><url/></x>`, echo it locally, complete the xfer.
-v1 reads the file into memory (bounded by `max-file-size` and a hard
-100 MiB cap); streaming and progress are later. Receiving needs nothing new:
-`jm_body_with_oob()` already shows the URL. Falls back to SI when the server
-has no upload service.
+Implemented in `core/upload_proto.c` (pure logic, unit tested),
+`ext/upload.c` (discovery, prpl entry points) and `ext/upload_xfer.c` (the
+`PurpleXfer`).
+
+Discovery: in `server_info`, a JID that is our server domain or an item of
+our own server's `disco#items` (never our own bare JID, foreign upload
+services are never offered) advertising `urn:xmpp:http:upload:0`, with
+`max-file-size` from its x-data. The first service wins.
+
+`send_file`, `new_xfer` and `chat_send_file` (rooms) create a `PurpleXfer`
+(type SEND) with our own ops when a service exists, else they fall back to
+the inherited SI transfer (`can_receive_file` is TRUE whenever a service
+exists: the URL reaches anybody). On init the size is checked against the
+smaller of `max-file-size` and the hard 100 MiB cap, before any network
+request, and an empty file is refused. Then:
+
+1. IQ get `<request filename size content-type/>` to the service (content
+   type from a small extension table, else `application/octet-stream`). The
+   answer must come from the discovered service.
+2. `<slot>`: `<put url>` with optional headers and `<get url>`. Only
+   `Authorization`, `Cookie` and `Expires` are used (other names are
+   dropped, counted and logged as a number only). A kept header value with
+   CR, LF or any other control character fails the whole slot (header
+   injection). Header values are trimmed. Both URLs must be http(s), carry
+   no user info, no IPv6 literal, no spaces or control characters, and must
+   be https unless the account option `allow_plain_http_upload` ("Allow
+   unencrypted file upload", default off) is set.
+3. `PUT` through `purple_util_fetch_url_request_data_len_with_account()` with
+   a hand-built binary-safe request (`Host`, `User-Agent`, `Content-Type`,
+   `Content-Length`, slot headers, `Connection: close`): honours the account
+   proxy, https through the purple SSL plugin (default port 443, checked),
+   `include_headers=TRUE` to read the status line; any 2xx is success.
+4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
+   `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
+   (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1
+   (a room reflects it), complete the xfer.
+
+Errors reach the user through `purple_xfer_error()` ("File upload of X
+failed: reason") and cancel the transfer; the same text is logged under
+`xmpp2-upload`. Logging: never the slot URLs (signed tokens) or headers; the
+only URL data in our log is the PUT host and scheme. libpurple itself logs
+the fetched URL at debug level under `util`, which we cannot suppress with
+this API.
+
+Memory: v1 reads the file into one buffer (request head plus body), bounded
+by `max-file-size` and the 100 MiB cap, and libpurple may hold a copy of the
+request while it sends it, so peak use is up to about twice the file size.
+The transfer is blocking only for the file read; the PUT is asynchronous.
+Streaming from disk and progress are later. In-flight uploads live in the
+module's per-stream state (not in `js->file_transfers`, whose entries the SI
+code casts to its own struct) and are cancelled when the stream closes.
+Receiving needs nothing new: `jm_body_with_oob()` already shows the URL.
 
 ### 7.8 Stream management (XEP-0198), audit result
 
