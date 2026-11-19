@@ -31,7 +31,9 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `expect-ev|expect-next|no-ev|count-ev` with filters (`kind conv who ctype
   flag noflag mtime timeout n text`), `expect-debug|no-debug|count-debug`
   (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
-  `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`. Exit 0 or 1.
+  `cmd`, `correct`, `upload|upload-fail`, `logcount`, `pref`, `drop`
+  (shutdown() the c2s socket without a stream close, like a network drop).
+  Exit 0 or 1.
 - `peer.py` is a scripted slixmpp peer (reference in its docstring):
   `--resource`, `send|sendr|sendmany|correct|raw`, `wait|nowait`,
   `expect-stanza|no-stanza|count-stanza|expect-out` (regex on raw stanzas),
@@ -54,7 +56,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   Put `timeout=` and other filter keys before `text=`, which takes the rest
   of the line.
 - `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
-  harness and peer primitive (works with both prpls).
+  harness and peer primitive (works with both prpls). `test_sm.sh` covers
+  stream management (prpl-xmpp2 only, else exit 77).
 
 Running several suites at once on one host: use a private server with
 `XMPP2_TEST_CONTAINER=name XMPP2_TEST_C2S_PORT=N XMPP2_TEST_HTTP_PORT=M`,
