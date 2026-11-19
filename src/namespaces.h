@@ -65,9 +65,6 @@
 /* XEP-0096 SI File Transfer */
 #define NS_SI_FILE_TRANSFER 	"http://jabber.org/protocol/si/profile/file-transfer"
 
-/* XEP-0124 Bidirectional-streams Over Synchronous HTTP (BOSH) */
-#define NS_BOSH "http://jabber.org/protocol/httpbind"
-
 /* XEP-0191 Simple Communications Blocking */
 #define NS_SIMPLE_BLOCKING "urn:xmpp:blocking"
 
@@ -84,9 +81,6 @@
 #define NS_DELAYED_DELIVERY "urn:xmpp:delay"
 #define NS_DELAYED_DELIVERY_LEGACY "jabber:x:delay"
 
-/* XEP-0206 XMPP over BOSH */
-#define NS_XMPP_BOSH "urn:xmpp:xbosh"
-
 /* XEP-0224 Attention */
 #define NS_ATTENTION "urn:xmpp:attention:0"
 
@@ -99,18 +93,31 @@
 /* XEP-0264 File Transfer Thumbnails (Thumbs) */
 #define NS_THUMBS "urn:xmpp:thumbs:0"
 
-/* Google extensions */
-#define NS_GOOGLE_CAMERA "http://www.google.com/xmpp/protocol/camera/v1"
-#define NS_GOOGLE_VIDEO "http://www.google.com/xmpp/protocol/video/v1"
-#define NS_GOOGLE_VOICE "http://www.google.com/xmpp/protocol/voice/v1"
-#define NS_GOOGLE_JINGLE_INFO "google:jingleinfo"
+/* XEP-0059 Result Set Management */
+#define NS_RSM "http://jabber.org/protocol/rsm"
 
-#define NS_GOOGLE_MAIL_NOTIFY "google:mail:notify"
-#define NS_GOOGLE_ROSTER "google:roster"
+/* XEP-0184 Message Delivery Receipts */
+#define NS_RECEIPTS "urn:xmpp:receipts"
 
-#define NS_GOOGLE_PROTOCOL_SESSION "http://www.google.com/xmpp/protocol/session"
-#define NS_GOOGLE_SESSION "http://www.google.com/session"
-#define NS_GOOGLE_SESSION_PHONE "http://www.google.com/session/phone"
-#define NS_GOOGLE_SESSION_VIDEO "http://www.google.com/session/video"
+/* XEP-0280 Message Carbons */
+#define NS_CARBONS "urn:xmpp:carbons:2"
+
+/* XEP-0297 Stanza Forwarding */
+#define NS_FORWARD "urn:xmpp:forward:0"
+
+/* XEP-0308 Last Message Correction */
+#define NS_CORRECTION "urn:xmpp:message-correct:0"
+
+/* XEP-0313 Message Archive Management */
+#define NS_MAM "urn:xmpp:mam:2"
+
+/* XEP-0333 Chat Markers */
+#define NS_CHAT_MARKERS "urn:xmpp:chat-markers:0"
+
+/* XEP-0359 Unique and Stable Stanza IDs */
+#define NS_SID "urn:xmpp:sid:0"
+
+/* XEP-0363 HTTP File Upload */
+#define NS_HTTP_UPLOAD "urn:xmpp:http:upload:0"
 
 #endif /* PURPLE_JABBER_NAMESPACES_H_ */

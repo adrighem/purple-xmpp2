@@ -205,7 +205,7 @@ void jabber_avatar_set(JabberStream *js, PurpleStoredImage *img)
 			g_free(heightstring);
 			g_free(hash);
 		} else {
-			purple_debug_error("jabber", "Cannot set PEP avatar to non-PNG data\n");
+			purple_debug_error("xmpp2", "Cannot set PEP avatar to non-PNG data\n");
 		}
 	}
 }
@@ -269,7 +269,7 @@ do_buddy_avatar_update_fromurl(PurpleUtilFetchUrlData *url_data,
 	gpointer icon_data;
 
 	if(!url_text) {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 		             "do_buddy_avatar_update_fromurl got error \"%s\"",
 		             error_message);
 		goto out;

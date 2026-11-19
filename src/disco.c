@@ -30,16 +30,13 @@
 #include "adhoccommands.h"
 #include "buddy.h"
 #include "disco.h"
-#include "google/google.h"
-#include "google/gmail.h"
-#include "google/jingleinfo.h"
 #include "iq.h"
 #include "jabber.h"
-#include "jingle/jingle.h"
 #include "pep.h"
 #include "presence.h"
 #include "roster.h"
 #include "useravatar.h"
+#include "ext/ext.h"
 
 struct _jabber_disco_info_cb_data {
 	gpointer data;
@@ -73,7 +70,7 @@ jabber_disco_bytestream_server_cb(JabberStream *js, const char *from,
 
 
 			if (jid == NULL || !purple_strequal(jid, from))
-				purple_debug_error("jabber", "Invalid jid(%s) for bytestream.\n",
+				purple_debug_error("xmpp2", "Invalid jid(%s) for bytestream.\n",
 						   jid ? jid : "(null)");
 
 			sh->host = g_strdup(xmlnode_get_attrib(sh_node, "host"));
@@ -83,7 +80,7 @@ jabber_disco_bytestream_server_cb(JabberStream *js, const char *from,
 		}
 	}
 
-	purple_debug_info("jabber", "Discovered bytestream proxy server: "
+	purple_debug_info("xmpp2", "Discovered bytestream proxy server: "
 			  "jid='%s' host='%s' port='%d' zeroconf='%s'\n",
 			   from ? from : "", sh->host ? sh->host : "",
 			   sh->port, sh->zeroconf ? sh->zeroconf : "");
@@ -142,44 +139,6 @@ void jabber_disco_info_parse(JabberStream *js, const char *from,
 					xmlnode_set_attrib(feature, "var", feat->namespace);
 				}
 			}
-#ifdef USE_VV
-		} else if (purple_strequal(node, CAPS0115_NODE "#" "voice-v1")) {
-			/*
-			 * HUGE HACK! We advertise this ext (see jabber_presence_create_js
-			 * where we add <c/> to the <presence/>) for the Google Talk
-			 * clients that don't actually check disco#info features.
-			 *
-			 * This specific feature is redundant but is what
-			 * node='http://mail.google.com/xmpp/client/caps', ver='1.1'
-			 * advertises as 'voice-v1'.
-			 */
-			xmlnode *feature = xmlnode_new_child(query, "feature");
-			xmlnode_set_attrib(feature, "var", NS_GOOGLE_VOICE);
-		} else if (purple_strequal(node, CAPS0115_NODE "#" "video-v1")) {
-			/*
-			 * HUGE HACK! We advertise this ext (see jabber_presence_create_js
-			 * where we add <c/> to the <presence/>) for the Google Talk
-			 * clients that don't actually check disco#info features.
-			 *
-			 * This specific feature is redundant but is what
-			 * node='http://mail.google.com/xmpp/client/caps', ver='1.1'
-			 * advertises as 'video-v1'.
-			 */
-			xmlnode *feature = xmlnode_new_child(query, "feature");
-			xmlnode_set_attrib(feature, "var", NS_GOOGLE_VIDEO);
-		} else if (purple_strequal(node, CAPS0115_NODE "#" "camera-v1")) {
-			/*
-			 * HUGE HACK! We advertise this ext (see jabber_presence_create_js
-			 * where we add <c/> to the <presence/>) for the Google Talk
-			 * clients that don't actually check disco#info features.
-			 *
-			 * This specific feature is redundant but is what
-			 * node='http://mail.google.com/xmpp/client/caps', ver='1.1'
-			 * advertises as 'camera-v1'.
-			 */
-			xmlnode *feature = xmlnode_new_child(query, "feature");
-			xmlnode_set_attrib(feature, "var", NS_GOOGLE_CAMERA);
-#endif
 		} else {
 			xmlnode *error, *inf;
 
@@ -263,7 +222,7 @@ static void jabber_disco_info_cb(JabberStream *js, const char *from,
 					JabberIq *iq;
 					JabberBytestreamsStreamhost *sh;
 
-					purple_debug_info("jabber", "Found bytestream proxy server: %s\n", from);
+					purple_debug_info("xmpp2", "Found bytestream proxy server: %s\n", from);
 
 					sh = g_new0(JabberBytestreamsStreamhost, 1);
 					sh->jid = g_strdup(from);
@@ -299,7 +258,7 @@ static void jabber_disco_info_cb(JabberStream *js, const char *from,
 					capabilities |= JABBER_CAP_ADHOC;
 				}
 				else if(purple_strequal(var, NS_IBB)) {
-					purple_debug_info("jabber", "remote supports IBB\n");
+					purple_debug_info("xmpp2", "remote supports IBB\n");
 					capabilities |= JABBER_CAP_IBB;
 				}
 			}
@@ -311,6 +270,10 @@ static void jabber_disco_info_cb(JabberStream *js, const char *from,
 
 		if(jbr)
 			jbr->capabilities = capabilities;
+
+		/* The server's components (MUC, upload, ...) have domain JIDs */
+		if (from && !strchr(from, '@'))
+			x2_ext_server_info(js, from, query);
 
 		if (jdicd && jdicd->callback)
 			jdicd->callback(js, from, capabilities, jdicd->data);
@@ -358,6 +321,45 @@ void jabber_disco_items_parse(JabberStream *js, const char *from,
 	}
 }
 
+/*
+ * disco#info of our own bare JID: the account's PEP service and, on servers
+ * like Prosody, the account archive features (MAM, carbons) are advertised
+ * here and not on the domain.  The roster request follows, whatever the
+ * outcome, so the login chain is: server info, account info, roster,
+ * pre_presence, initial presence, session_ready.
+ */
+static void
+jabber_disco_account_info_cb(JabberStream *js, const char *from,
+                             JabberIqType type, const char *id,
+                             xmlnode *packet, gpointer data)
+{
+	xmlnode *query = xmlnode_get_child_with_namespace(packet, "query",
+	                                                  NS_DISCO_INFO);
+	char *bare = jabber_id_get_bare_jid(js->user);
+
+	/* The result of a request to our own bare JID may come without "from" */
+	if (type == JABBER_IQ_RESULT && query &&
+	    (from == NULL || purple_strequal(from, bare)))
+		x2_ext_account_info(js, query);
+	else
+		purple_debug_info("xmpp2", "no usable account disco#info\n");
+
+	g_free(bare);
+	jabber_roster_request(js);
+}
+
+static void
+jabber_disco_account_info(JabberStream *js)
+{
+	JabberIq *iq = jabber_iq_new_query(js, JABBER_IQ_GET, NS_DISCO_INFO);
+	char *bare = jabber_id_get_bare_jid(js->user);
+
+	xmlnode_set_attrib(iq->node, "to", bare);
+	g_free(bare);
+	jabber_iq_set_callback(iq, jabber_disco_account_info_cb, NULL);
+	jabber_iq_send(iq);
+}
+
 static void
 jabber_disco_finish_server_info_result_cb(JabberStream *js)
 {
@@ -373,8 +375,8 @@ jabber_disco_finish_server_info_result_cb(JabberStream *js)
 	if (js->pep)
 		jabber_avatar_fetch_mine(js);
 
-	/* Yes, please! */
-	jabber_roster_request(js);
+	/* Yes, please! The roster follows the own account's disco#info. */
+	jabber_disco_account_info(js);
 
 	if (js->server_caps & JABBER_CAP_ADHOC) {
 		/* The server supports ad-hoc commands, so let's request the list */
@@ -419,78 +421,6 @@ jabber_disco_finish_server_info_result_cb(JabberStream *js)
 
 }
 
-/* should probably share this code with google.c, or maybe from 2.7.0
- introduce an abstracted hostname -> IP function in dns.c */
-static void
-jabber_disco_stun_lookup_cb(GSList *hosts, gpointer data,
-	const char *error_message)
-{
-	JabberStream *js = (JabberStream *) data;
-
-	if (error_message) {
-		purple_debug_error("jabber", "STUN lookup failed: %s\n",
-			error_message);
-		g_slist_free(hosts);
-		js->stun_query = NULL;
-		return;
-	}
-
-	if (hosts && g_slist_next(hosts)) {
-		struct sockaddr *addr = g_slist_next(hosts)->data;
-		char dst[INET6_ADDRSTRLEN];
-		int port;
-
-		if (addr->sa_family == AF_INET6) {
-			inet_ntop(addr->sa_family, &((struct sockaddr_in6 *) addr)->sin6_addr,
-				dst, sizeof(dst));
-			port = ntohs(((struct sockaddr_in6 *) addr)->sin6_port);
-		} else {
-			inet_ntop(addr->sa_family, &((struct sockaddr_in *) addr)->sin_addr,
-				dst, sizeof(dst));
-			port = ntohs(((struct sockaddr_in *) addr)->sin_port);
-		}
-
-		if (js->stun_ip)
-			g_free(js->stun_ip);
-		js->stun_ip = g_strdup(dst);
-		js->stun_port = port;
-
-		purple_debug_info("jabber", "set STUN IP/port address: "
-		                  "%s:%d\n", dst, port);
-
-		/* unmark ongoing query */
-		js->stun_query = NULL;
-	}
-
-	while (hosts != NULL) {
-		hosts = g_slist_delete_link(hosts, hosts);
-		/* Free the address */
-		g_free(hosts->data);
-		hosts = g_slist_delete_link(hosts, hosts);
-	}
-}
-
-
-static void
-jabber_disco_stun_srv_resolve_cb(PurpleSrvResponse *resp, int results, gpointer data)
-{
-	JabberStream *js = (JabberStream *) data;
-
-	purple_debug_info("jabber", "got %d SRV responses for STUN.\n", results);
-	js->srv_query_data = NULL;
-
-	if (results > 0) {
-		PurpleAccount *account;
-		purple_debug_info("jabber", "looking up IP for %s:%d\n",
-			resp[0].hostname, resp[0].port);
-		account = purple_connection_get_account(js->gc);
-		js->stun_query =
-			purple_dnsquery_a_account(account, resp[0].hostname, resp[0].port,
-				jabber_disco_stun_lookup_cb, js);
-	}
-}
-
-
 static void
 jabber_disco_server_info_result_cb(JabberStream *js, const char *from,
                                    JabberIqType type, const char *id,
@@ -519,7 +449,6 @@ jabber_disco_server_info_result_cb(JabberStream *js, const char *from,
 	for (child = xmlnode_get_child(query, "identity"); child;
 	     child = xmlnode_get_next_twin(child)) {
 		const char *category, *type, *name;
-		const char *stun_ip;
 		category = xmlnode_get_attrib(child, "category");
 		type = xmlnode_get_attrib(child, "type");
 		if(purple_strequal(category, "pubsub") && purple_strequal(type, "pep")) {
@@ -539,23 +468,6 @@ jabber_disco_server_info_result_cb(JabberStream *js, const char *from,
 
 		g_free(js->server_name);
 		js->server_name = g_strdup(name);
-		stun_ip = purple_network_get_stun_ip();
-		if (purple_strequal(name, "Google Talk")) {
-			purple_debug_info("jabber", "Google Talk!\n");
-			js->googletalk = TRUE;
-
-			/* autodiscover stun and relays */
-			if (!stun_ip || !*stun_ip) {
-				jabber_google_send_jingle_info(js);
-			}
-		} else if (!stun_ip || !*stun_ip) {
-			js->srv_query_data =
-				purple_srv_resolve_account(
-					purple_connection_get_account(js->gc), "stun", "udp",
-					js->user->domain,
-					jabber_disco_stun_srv_resolve_cb, js);
-			/* TODO: add TURN support later... */
-		}
 	}
 
 	for (child = xmlnode_get_child(query, "feature"); child;
@@ -565,17 +477,14 @@ jabber_disco_server_info_result_cb(JabberStream *js, const char *from,
 		if (!var)
 			continue;
 
-		if (purple_strequal(NS_GOOGLE_MAIL_NOTIFY, var)) {
-			js->server_caps |= JABBER_CAP_GMAIL_NOTIFY;
-			jabber_gmail_init(js);
-		} else if (purple_strequal(NS_GOOGLE_ROSTER, var)) {
-			js->server_caps |= JABBER_CAP_GOOGLE_ROSTER;
-		} else if (purple_strequal("http://jabber.org/protocol/commands", var)) {
+		if (purple_strequal("http://jabber.org/protocol/commands", var)) {
 			js->server_caps |= JABBER_CAP_ADHOC;
 		} else if (purple_strequal(NS_SIMPLE_BLOCKING, var)) {
 			js->server_caps |= JABBER_CAP_BLOCKING;
 		}
 	}
+
+	x2_ext_server_info(js, from, query);
 
 	jabber_disco_finish_server_info_result_cb(js);
 }

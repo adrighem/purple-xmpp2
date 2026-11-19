@@ -62,9 +62,9 @@ static void jabber_ping_result_cb(JabberStream *js, const char *from,
                                   xmlnode *packet, gpointer data)
 {
 	if (type == JABBER_IQ_RESULT)
-		purple_debug_info("jabber", "PONG!\n");
+		purple_debug_info("xmpp2", "PONG!\n");
 	else
-		purple_debug_info("jabber", "ping not supported\n");
+		purple_debug_info("xmpp2", "ping not supported\n");
 }
 
 void jabber_keepalive_ping(JabberStream *js)

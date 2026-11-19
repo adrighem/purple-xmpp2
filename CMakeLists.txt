@@ -10,11 +10,12 @@ endif()
 project(purple-xmpp2 VERSION "${XMPP2_VERSION}" LANGUAGES C)
 
 include(CTest)
+include(GNUInstallDirs)
+include(CheckSymbolExists)
 find_package(PkgConfig REQUIRED)
 
 option(XMPP2_WERROR "Treat compiler warnings as errors" OFF)
 option(XMPP2_IDN "Use libidn for stringprep (recommended)" ON)
-option(XMPP2_CYRUS_SASL "Use Cyrus SASL for authentication" OFF)
 
 pkg_check_modules(PURPLE REQUIRED IMPORTED_TARGET purple>=2.14)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0 gobject-2.0 gmodule-2.0)
@@ -31,32 +32,18 @@ set(XMPP2_PLUGIN_DIR "${PURPLE_PLUGINDIR}"
 set(XMPP2_SOURCES
     src/adhoccommands.c
     src/auth.c
-    src/auth_digest_md5.c
     src/auth_plain.c
     src/auth_scram.c
-    src/bosh.c
     src/buddy.c
     src/caps.c
     src/chat.c
     src/data.c
     src/disco.c
-    src/google/gmail.c
-    src/google/google.c
-    src/google/google_presence.c
-    src/google/google_roster.c
-    src/google/google_session.c
-    src/google/jingleinfo.c
-    src/google/relay.c
+    src/ext/ext.c
+    src/ext/msgctx.c
     src/ibb.c
     src/iq.c
     src/jabber.c
-    src/jingle/content.c
-    src/jingle/iceudp.c
-    src/jingle/jingle.c
-    src/jingle/rawudp.c
-    src/jingle/rtp.c
-    src/jingle/session.c
-    src/jingle/transport.c
     src/jutil.c
     src/libxmpp.c
     src/message.c
@@ -74,6 +61,22 @@ set(XMPP2_SOURCES
     src/usertune.c
     src/xdata.c)
 
+# Pure protocol logic (glib + xmlnode only), shared with the unit tests.
+add_library(x2core STATIC
+    src/core/dedup.c
+    src/core/forward.c
+    src/core/sid.c)
+set_target_properties(x2core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    C_VISIBILITY_PRESET hidden)
+target_compile_features(x2core PRIVATE c_std_11)
+target_compile_options(x2core PRIVATE -Wall -Wextra)
+if(XMPP2_WERROR)
+    target_compile_options(x2core PRIVATE -Werror)
+endif()
+target_include_directories(x2core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+target_link_libraries(x2core PUBLIC PkgConfig::PURPLE PkgConfig::GLIB)
+
 add_library(xmpp2 MODULE ${XMPP2_SOURCES})
 # Install as libxmpp2.so, no "lib" prefix doubling.
 set_target_properties(xmpp2 PROPERTIES
@@ -85,22 +88,34 @@ target_compile_features(xmpp2 PRIVATE c_std_11)
 target_compile_definitions(xmpp2 PRIVATE
     PURPLE_PLUGINS
     XMPP2_VERSION="${PROJECT_VERSION}")
-# Upstream callbacks have fixed signatures with many unused parameters, and the
-# Jingle GObject classes use pre-2.58 GLib idioms (class_init casts and
-# g_type_class_add_private); keep those three quiet until the code is reworked.
+# Inherited callbacks have fixed signatures with many unused parameters, and
+# xdata.c calls one callback type through another (works on every ABI we
+# build for); keep both quiet until xdata.c is reworked.
 target_compile_options(xmpp2 PRIVATE -Wall -Wextra
-    -Wno-unused-parameter -Wno-cast-function-type -Wno-deprecated-declarations)
+    -Wno-unused-parameter -Wno-cast-function-type)
 if(XMPP2_WERROR)
     target_compile_options(xmpp2 PRIVATE -Werror)
 endif()
 target_include_directories(xmpp2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(xmpp2 PRIVATE
-    PkgConfig::PURPLE PkgConfig::GLIB PkgConfig::LIBXML m)
+    x2core PkgConfig::PURPLE PkgConfig::GLIB PkgConfig::LIBXML m)
 
 # Keep our jabber_* symbols private: the built-in libjabber.so.0 may live in
-# the same process.  Only purple_init_plugin is exported (G_MODULE_EXPORT).
+# the same process.  -fvisibility=hidden plus the version script leave only
+# purple_init_plugin exported; tests/unit_exports.sh verifies it.
+set(XMPP2_VERSION_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/src/xmpp2.map")
 target_link_options(xmpp2 PRIVATE
-    "LINKER:-Bsymbolic" "LINKER:--no-undefined")
+    "LINKER:--version-script=${XMPP2_VERSION_SCRIPT}"
+    "LINKER:--no-undefined")
+set_target_properties(xmpp2 PROPERTIES LINK_DEPENDS "${XMPP2_VERSION_SCRIPT}")
+
+# gettext: our own domain, bound at plugin load (see libxmpp.c)
+check_symbol_exists(dgettext libintl.h XMPP2_HAVE_GETTEXT)
+if(XMPP2_HAVE_GETTEXT)
+    target_compile_definitions(xmpp2 PRIVATE
+        ENABLE_NLS
+        XMPP2_LOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}")
+endif()
 
 if(XMPP2_IDN)
     pkg_check_modules(LIBIDN REQUIRED IMPORTED_TARGET libidn)
@@ -108,11 +123,8 @@ if(XMPP2_IDN)
     target_link_libraries(xmpp2 PRIVATE PkgConfig::LIBIDN)
 endif()
 
-if(XMPP2_CYRUS_SASL)
-    pkg_check_modules(LIBSASL REQUIRED IMPORTED_TARGET libsasl2)
-    target_sources(xmpp2 PRIVATE src/auth_cyrus.c)
-    target_compile_definitions(xmpp2 PRIVATE HAVE_CYRUS_SASL)
-    target_link_libraries(xmpp2 PRIVATE PkgConfig::LIBSASL)
-endif()
-
 install(TARGETS xmpp2 LIBRARY DESTINATION "${XMPP2_PLUGIN_DIR}")
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

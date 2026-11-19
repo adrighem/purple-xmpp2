@@ -5,6 +5,29 @@
  * pieces of it that the (jabber derived) sources actually rely on:
  * gettext macros, the common system includes and a couple of constants.
  */
+
+/* purple-xmpp2
+ *
+ * Derived from internal.h of Pidgin/libpurple 2.14.14.
+ *
+ * Purple is the legal property of its developers, whose names are too numerous
+ * to list here.  Please refer to the COPYRIGHT file distributed with the
+ * Pidgin source distribution.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02111-1301  USA
+ */
 #ifndef _XMPP2_INTERNAL_H_
 #define _XMPP2_INTERNAL_H_
 
@@ -59,7 +82,19 @@ gboolean _purple_network_set_common_socket_flags(int fd);
 
 #ifdef ENABLE_NLS
 # include <libintl.h>
-# define _(String) ((const char *)dgettext(XMPP2_PACKAGE, String))
+/*
+ * Most inherited strings are translated in Pidgin's own catalogs ("pidgin"
+ * domain, bound by libpurple), so fall back to those for free.  dgettext()
+ * returns its argument unchanged when there is no translation.
+ */
+static inline const char *
+x2_gettext(const char *msgid)
+{
+	const char *tr = dgettext(XMPP2_PACKAGE, msgid);
+
+	return tr != msgid ? tr : dgettext("pidgin", msgid);
+}
+# define _(String) x2_gettext(String)
 #else
 # define _(String) ((const char *)(String))
 #endif

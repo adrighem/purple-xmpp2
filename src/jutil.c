@@ -745,7 +745,7 @@ JabberBuddyState jabber_buddy_show_get_state(const char *id)
 		if (jabber_statuses[i].show && purple_strequal(id, jabber_statuses[i].show))
 			return jabber_statuses[i].state;
 
-	purple_debug_warning("jabber", "Invalid value of presence <show/> "
+	purple_debug_warning("xmpp2", "Invalid value of presence <show/> "
 	                     "attribute: %s\n", id);
 	return JABBER_BUDDY_STATE_UNKNOWN;
 }
@@ -782,7 +782,7 @@ jabber_calculate_data_hash(gconstpointer data, size_t len,
 	context = purple_cipher_context_new_by_name(hash_algo, NULL);
 	if (context == NULL)
 	{
-		purple_debug_error("jabber", "Could not find %s cipher\n", hash_algo);
+		purple_debug_error("xmpp2", "Could not find %s cipher\n", hash_algo);
 		g_return_val_if_reached(NULL);
 	}
 
@@ -790,7 +790,7 @@ jabber_calculate_data_hash(gconstpointer data, size_t len,
 	purple_cipher_context_append(context, data, len);
 	if (!purple_cipher_context_digest_to_str(context, sizeof(digest), digest, NULL))
 	{
-		purple_debug_error("jabber", "Failed to get digest for %s cipher.\n",
+		purple_debug_error("xmpp2", "Failed to get digest for %s cipher.\n",
 		    hash_algo);
 		g_return_val_if_reached(NULL);
 	}

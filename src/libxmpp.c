@@ -41,22 +41,19 @@
 #include "si.h"
 #include "message.h"
 #include "presence.h"
-#include "google/google.h"
 #include "pep.h"
 #include "usermood.h"
 #include "usertune.h"
 #include "caps.h"
 #include "data.h"
 #include "ibb.h"
+#include "ext/ext.h"
 
 static PurplePlugin *my_protocol = NULL;
 
 static PurplePluginProtocolInfo prpl_info =
 {
 	OPT_PROTO_CHAT_TOPIC | OPT_PROTO_UNIQUE_CHATNAME | OPT_PROTO_MAIL_CHECK |
-#ifdef HAVE_CYRUS_SASL
-	OPT_PROTO_PASSWORD_OPTIONAL |
-#endif
 	OPT_PROTO_SLASH_COMMANDS_NATIVE,
 	NULL,							/* user_splits */
 	NULL,							/* protocol_options */
@@ -125,8 +122,8 @@ static PurplePluginProtocolInfo prpl_info =
 
 	sizeof(PurplePluginProtocolInfo),       /* struct_size */
 	NULL, /* get_account_text_table */
-	jabber_initiate_media,          /* initiate_media */
-	jabber_get_media_caps,                  /* get_media_caps */
+	NULL,                           /* initiate_media */
+	NULL,                           /* get_media_caps */
 	jabber_get_moods,  							/* get_moods */
 	NULL, /* set_public_alias */
 	NULL, /* get_public_alias */
@@ -254,11 +251,22 @@ static gboolean xmpp_uri_handler(const char *proto, const char *user, GHashTable
 
 
 static void
+bind_gettext(void)
+{
+#ifdef ENABLE_NLS
+	bindtextdomain(XMPP2_PACKAGE, XMPP2_LOCALEDIR);
+	bind_textdomain_codeset(XMPP2_PACKAGE, "UTF-8");
+#endif
+}
+
+static void
 init_plugin(PurplePlugin *plugin)
 {
 	PurpleAccountUserSplit *split;
 	PurpleAccountOption *option;
 	GList *encryption_values = NULL;
+
+	bind_gettext();
 
 	/* Translators: 'domain' is used here in the context of Internet domains, e.g. pidgin.im */
 	split = purple_account_user_split_new(_("Domain"), NULL, '@');
@@ -310,11 +318,6 @@ init_plugin(PurplePlugin *plugin)
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 						  option);
 
-	option = purple_account_option_string_new(_("BOSH URL"),
-						  "bosh_url", NULL);
-	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
-						  option);
-
 	/* this should probably be part of global smiley theme settings
 	 * later on
 	 */
@@ -323,9 +326,12 @@ init_plugin(PurplePlugin *plugin)
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 		option);
 
+	x2_ext_account_options(&prpl_info.protocol_options);
+
 	my_protocol = plugin;
 
-	purple_prefs_remove("/plugins/prpl/xmpp2");
+	/* Never remove: this is where users' persistent settings live */
+	purple_prefs_add_none("/plugins/prpl/xmpp2");
 
 	purple_signal_connect(purple_get_core(), "uri-handler", plugin,
 		PURPLE_CALLBACK(xmpp_uri_handler), NULL);

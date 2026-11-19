@@ -132,7 +132,7 @@ jabber_si_bytestreams_connect_cb(gpointer data, gint source, const gchar *error_
 	jsx->connect_timeout = 0;
 
 	if(source < 0) {
-		purple_debug_warning("jabber",
+		purple_debug_warning("xmpp2",
 				"si connection failed, jid was %s, host was %s, error was %s\n",
 				streamhost->jid, streamhost->host,
 				error_message ? error_message : "(null)");
@@ -176,7 +176,7 @@ connect_timeout_cb(gpointer data)
 	PurpleXfer *xfer = data;
 	JabberSIXfer *jsx = xfer->data;
 
-	purple_debug_info("jabber", "Streamhost connection timeout of %d seconds exceeded.\n", STREAMHOST_CONNECT_TIMEOUT);
+	purple_debug_info("xmpp2", "Streamhost connection timeout of %d seconds exceeded.\n", STREAMHOST_CONNECT_TIMEOUT);
 
 	jsx->connect_timeout = 0;
 
@@ -206,7 +206,7 @@ jabber_si_bytestreams_ibb_timeout_cb(gpointer data)
 	JabberSIXfer *jsx = xfer->data;
 
 	if (jsx && !jsx->ibb_session) {
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"jabber_si_bytestreams_ibb_timeout called and IBB session not set "
 			" up yet, cancel transfer");
 		jabber_si_bytestreams_ibb_timeout_remove(jsx);
@@ -241,7 +241,7 @@ static void jabber_si_bytestreams_attempt_connect(PurpleXfer *xfer)
 		/* if IBB is available, revert to that before giving up... */
 		if (jsx->stream_method & STREAM_METHOD_IBB) {
 			/* if we are the initializer, init IBB */
-			purple_debug_info("jabber",
+			purple_debug_info("xmpp2",
 				"jabber_si_bytestreams_attempt_connect: "
 				"no streamhosts found, trying IBB\n");
 			/* if we are the sender, open an IBB session, but not if we already
@@ -407,7 +407,7 @@ jabber_si_xfer_bytestreams_send_read_again_resp_cb(gpointer data, gint source,
 	/* Before actually starting sending the file, we need to wait until the
 	 * recipient sends the IQ result with <streamhost-used/>
 	 */
-	purple_debug_info("jabber", "SOCKS5 connection negotiation completed. "
+	purple_debug_info("xmpp2", "SOCKS5 connection negotiation completed. "
 					  "Waiting for IQ result to start file transfer.\n");
 }
 
@@ -422,10 +422,10 @@ jabber_si_xfer_bytestreams_send_read_again_cb(gpointer data, gint source,
 	char *dstaddr, *hash;
 	const char *host;
 
-	purple_debug_info("jabber", "in jabber_si_xfer_bytestreams_send_read_again_cb\n");
+	purple_debug_info("xmpp2", "in jabber_si_xfer_bytestreams_send_read_again_cb\n");
 
 	if(jsx->rxlen < 5) {
-		purple_debug_info("jabber", "reading the first 5 bytes\n");
+		purple_debug_info("xmpp2", "reading the first 5 bytes\n");
 		len = read(source, buffer, 5 - jsx->rxlen);
 		if(len < 0 && errno == EAGAIN)
 			return;
@@ -442,7 +442,7 @@ jabber_si_xfer_bytestreams_send_read_again_cb(gpointer data, gint source,
 		return;
 	} else if(jsx->rxqueue[0] != 0x05 || jsx->rxqueue[1] != 0x01 ||
 			jsx->rxqueue[3] != 0x03 || jsx->rxqueue[4] != 40) {
-		purple_debug_info("jabber", "Invalid socks5 conn req. header[0x%x,0x%x,0x%x,0x%x,0x%x]\n",
+		purple_debug_info("xmpp2", "Invalid socks5 conn req. header[0x%x,0x%x,0x%x,0x%x,0x%x]\n",
 				  jsx->rxqueue[0], jsx->rxqueue[1], jsx->rxqueue[2],
 				  jsx->rxqueue[3], jsx->rxqueue[4]);
 		purple_input_remove(xfer->watcher);
@@ -453,7 +453,7 @@ jabber_si_xfer_bytestreams_send_read_again_cb(gpointer data, gint source,
 	} else if(jsx->rxlen - 5 < (size_t)jsx->rxqueue[4] + 2) {
 		/* Upper-bound of 257 (jsx->rxlen = 5, jsx->rxqueue[4] = 0xFF) */
 		unsigned short to_read = jsx->rxqueue[4] + 2 - (jsx->rxlen - 5);
-		purple_debug_info("jabber", "reading %u bytes for DST.ADDR + port num (trying to read %hu now)\n",
+		purple_debug_info("xmpp2", "reading %u bytes for DST.ADDR + port num (trying to read %hu now)\n",
 				  jsx->rxqueue[4] + 2, to_read);
 		len = read(source, buffer, to_read);
 		if(len < 0 && errno == EAGAIN)
@@ -487,11 +487,11 @@ jabber_si_xfer_bytestreams_send_read_again_cb(gpointer data, gint source,
 	if(strncmp(hash, jsx->rxqueue + 5, 40) ||
 			jsx->rxqueue[45] != 0x00 || jsx->rxqueue[46] != 0x00) {
 		if (jsx->rxqueue[45] != 0x00 || jsx->rxqueue[46] != 0x00)
-			purple_debug_error("jabber", "Got SOCKS5 BS conn with the wrong DST.PORT"
+			purple_debug_error("xmpp2", "Got SOCKS5 BS conn with the wrong DST.PORT"
 						     " (must be 0 - got[0x%x,0x%x]).\n",
 						     jsx->rxqueue[45], jsx->rxqueue[46]);
 		else
-			purple_debug_error("jabber", "Got SOCKS5 BS conn with the wrong DST.ADDR"
+			purple_debug_error("xmpp2", "Got SOCKS5 BS conn with the wrong DST.ADDR"
 						     " (expected '%s' - got '%.40s').\n",
 						     hash, jsx->rxqueue + 5);
 		close(source);
@@ -577,13 +577,13 @@ jabber_si_xfer_bytestreams_send_read_cb(gpointer data, gint source,
 	int len;
 	char buffer[256];
 
-	purple_debug_info("jabber", "in jabber_si_xfer_bytestreams_send_read_cb\n");
+	purple_debug_info("xmpp2", "in jabber_si_xfer_bytestreams_send_read_cb\n");
 
 	xfer->fd = source;
 
 	/** Try to read the SOCKS5 header */
 	if(jsx->rxlen < 2) {
-		purple_debug_info("jabber", "reading those first two bytes\n");
+		purple_debug_info("xmpp2", "reading those first two bytes\n");
 		len = read(source, buffer, 2 - jsx->rxlen);
 		if(len < 0 && errno == EAGAIN)
 			return;
@@ -601,7 +601,7 @@ jabber_si_xfer_bytestreams_send_read_cb(gpointer data, gint source,
 	} else if(jsx->rxlen - 2 < (size_t)jsx->rxqueue[1]) {
 		/* Has a maximum value of 255 (jsx->rxlen = 2, jsx->rxqueue[1] = 0xFF) */
 		unsigned short to_read = jsx->rxqueue[1] - (jsx->rxlen - 2);
-		purple_debug_info("jabber", "reading %u bytes for auth methods (trying to read %hu now)\n",
+		purple_debug_info("xmpp2", "reading %u bytes for auth methods (trying to read %hu now)\n",
 				  jsx->rxqueue[1], to_read);
 		len = read(source, buffer, to_read);
 		if(len < 0 && errno == EAGAIN)
@@ -625,7 +625,7 @@ jabber_si_xfer_bytestreams_send_read_cb(gpointer data, gint source,
 	purple_input_remove(xfer->watcher);
 	xfer->watcher = 0;
 
-	purple_debug_info("jabber", "checking to make sure we're socks FIVE\n");
+	purple_debug_info("xmpp2", "checking to make sure we're socks FIVE\n");
 
 	if(jsx->rxqueue[0] != 0x05) {
 		close(source);
@@ -633,11 +633,11 @@ jabber_si_xfer_bytestreams_send_read_cb(gpointer data, gint source,
 		return;
 	}
 
-	purple_debug_info("jabber", "going to test %hhu different methods\n", jsx->rxqueue[1]);
+	purple_debug_info("xmpp2", "going to test %hhu different methods\n", jsx->rxqueue[1]);
 
 	for(i=0; i<jsx->rxqueue[1]; i++) {
 
-		purple_debug_info("jabber", "testing %hhu\n", jsx->rxqueue[i+2]);
+		purple_debug_info("xmpp2", "testing %hhu\n", jsx->rxqueue[i+2]);
 		if(jsx->rxqueue[i+2] == 0x00) {
 			g_free(jsx->rxqueue);
 			jsx->rxlen = 0;
@@ -687,13 +687,13 @@ jabber_si_xfer_bytestreams_send_connected_cb(gpointer data, gint source,
 	JabberSIXfer *jsx = xfer->data;
 	int acceptfd;
 
-	purple_debug_info("jabber", "in jabber_si_xfer_bytestreams_send_connected_cb\n");
+	purple_debug_info("xmpp2", "in jabber_si_xfer_bytestreams_send_connected_cb\n");
 
 	acceptfd = accept(source, NULL, 0);
 	if(acceptfd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
 		return;
 	else if(acceptfd == -1) {
-		purple_debug_warning("jabber", "accept: %s\n", g_strerror(errno));
+		purple_debug_warning("xmpp2", "accept: %s\n", g_strerror(errno));
 		/* Don't cancel the ft - allow it to fall to the next streamhost.*/
 		return;
 	}
@@ -723,7 +723,7 @@ jabber_si_connect_proxy_cb(JabberStream *js, const char *from,
 
 	/* Make sure that the xfer is actually still valid and we're not just receiving an old iq response */
 	if (!g_list_find(js->file_transfers, xfer)) {
-		purple_debug_error("jabber", "Got bytestreams response for no longer existing xfer (%p)\n", xfer);
+		purple_debug_error("xmpp2", "Got bytestreams response for no longer existing xfer (%p)\n", xfer);
 		return;
 	}
 
@@ -734,14 +734,14 @@ jabber_si_connect_proxy_cb(JabberStream *js, const char *from,
 	jsx = xfer->data;
 
 	if(type != JABBER_IQ_RESULT) {
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			    "jabber_si_xfer_connect_proxy_cb: type = error\n");
 		/* if IBB is available, open IBB session */
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"jabber_si_xfer_connect_proxy_cb: got error, method: %d\n",
 			jsx->stream_method);
 		if (jsx->stream_method & STREAM_METHOD_IBB) {
-			purple_debug_info("jabber", "IBB is possible, try it\n");
+			purple_debug_info("xmpp2", "IBB is possible, try it\n");
 			/* if we are the sender and haven't already opened an IBB
 			  session, do so now (we might already have failed to open
 			  the bytestream proxy ourselves when receiving this <iq/> */
@@ -772,7 +772,7 @@ jabber_si_connect_proxy_cb(JabberStream *js, const char *from,
 	if(!(jid = xmlnode_get_attrib(streamhost_used, "jid")))
 		return;
 
-	purple_debug_info("jabber", "jabber_si_connect_proxy_cb() will be looking at jsx %p: jsx->streamhosts is %p and jid is %s\n",
+	purple_debug_info("xmpp2", "jabber_si_connect_proxy_cb() will be looking at jsx %p: jsx->streamhosts is %p and jid is %s\n",
 					  jsx, jsx->streamhosts, jid);
 
 	if(!(matched = g_list_find_custom(jsx->streamhosts, jid, jabber_si_compare_jid)))
@@ -780,12 +780,12 @@ jabber_si_connect_proxy_cb(JabberStream *js, const char *from,
 		gchar *my_jid = g_strdup_printf("%s@%s/%s", jsx->js->user->node,
 			jsx->js->user->domain, jsx->js->user->resource);
 		if (purple_strequal(jid, my_jid)) {
-			purple_debug_info("jabber", "Got local SOCKS5 streamhost-used.\n");
+			purple_debug_info("xmpp2", "Got local SOCKS5 streamhost-used.\n");
 			purple_xfer_start(xfer, xfer->fd, NULL, -1);
 		} else {
 			/* if available, try to revert to IBB... */
 			if (jsx->stream_method & STREAM_METHOD_IBB) {
-				purple_debug_info("jabber",
+				purple_debug_info("xmpp2",
 					"jabber_si_connect_proxy_cb: trying to revert to IBB\n");
 				if (purple_xfer_get_type(xfer) == PURPLE_XFER_SEND) {
 					jabber_si_xfer_ibb_send_init(jsx->js, xfer);
@@ -795,7 +795,7 @@ jabber_si_connect_proxy_cb(JabberStream *js, const char *from,
 				}
 				/* if we are the receiver, we are already set up...*/
 			} else {
-				purple_debug_info("jabber",
+				purple_debug_info("xmpp2",
 					"streamhost-used does not match any proxy that was offered to target\n");
 				purple_xfer_cancel_local(xfer);
 			}
@@ -908,7 +908,7 @@ jabber_si_xfer_bytestreams_listen_cb(int sock, gpointer data)
 		if (!(sh->jid && sh->host && sh->port > 0))
 			continue;
 
-		purple_debug_info("jabber", "jabber_si_xfer_bytestreams_listen_cb() will be looking at jsx %p: jsx->streamhosts %p and sh->jid %p\n",
+		purple_debug_info("xmpp2", "jabber_si_xfer_bytestreams_listen_cb() will be looking at jsx %p: jsx->streamhosts %p and sh->jid %p\n",
 						  jsx, jsx->streamhosts, sh->jid);
 		if(g_list_find_custom(jsx->streamhosts, sh->jid, jabber_si_compare_jid) != NULL)
 			continue;
@@ -935,7 +935,7 @@ jabber_si_xfer_bytestreams_listen_cb(int sock, gpointer data)
 
 		/* if available, revert to IBB */
 		if (jsx->stream_method & STREAM_METHOD_IBB) {
-			purple_debug_info("jabber",
+			purple_debug_info("xmpp2",
 				"jabber_si_xfer_bytestreams_listen_cb: trying to revert to IBB\n");
 			if (purple_xfer_get_type(xfer) == PURPLE_XFER_SEND) {
 				/* if we are the sender, init the IBB session... */
@@ -976,7 +976,7 @@ jabber_si_xfer_bytestreams_send_init(PurpleXfer *xfer)
 	proxy_type = purple_proxy_info_get_type(
 		purple_proxy_get_setup(purple_connection_get_account(jsx->js->gc)));
 	if (proxy_type == PURPLE_PROXY_TOR) {
-		purple_debug_info("jabber", "Skipping attempting local streamhost.\n");
+		purple_debug_info("xmpp2", "Skipping attempting local streamhost.\n");
 		jsx->listen_data = NULL;
 	} else
 		jsx->listen_data = purple_network_listen_range(0, 0, SOCK_STREAM,
@@ -994,7 +994,7 @@ jabber_si_xfer_ibb_error_cb(JabberIBBSession *sess)
 {
 	PurpleXfer *xfer = (PurpleXfer *) jabber_ibb_session_get_user_data(sess);
 
-	purple_debug_error("jabber", "an error occurred during IBB file transfer\n");
+	purple_debug_error("xmpp2", "an error occurred during IBB file transfer\n");
 	purple_xfer_cancel_remote(xfer);
 }
 
@@ -1003,7 +1003,7 @@ jabber_si_xfer_ibb_closed_cb(JabberIBBSession *sess)
 {
 	PurpleXfer *xfer = (PurpleXfer *) jabber_ibb_session_get_user_data(sess);
 
-	purple_debug_info("jabber", "the remote user closed the transfer\n");
+	purple_debug_info("xmpp2", "the remote user closed the transfer\n");
 	if (purple_xfer_get_bytes_remaining(xfer) > 0) {
 		purple_xfer_cancel_remote(xfer);
 	} else {
@@ -1020,14 +1020,14 @@ jabber_si_xfer_ibb_recv_data_cb(JabberIBBSession *sess, gpointer data,
 	JabberSIXfer *jsx = (JabberSIXfer *) xfer->data;
 
 	if (size <= purple_xfer_get_bytes_remaining(xfer)) {
-		purple_debug_info("jabber", "about to write %" G_GSIZE_FORMAT " bytes from IBB stream\n",
+		purple_debug_info("xmpp2", "about to write %" G_GSIZE_FORMAT " bytes from IBB stream\n",
 			size);
 		purple_circ_buffer_append(jsx->ibb_buffer, data, size);
 		purple_xfer_prpl_ready(xfer);
 	} else {
 		/* trying to write past size of file transfers negotiated size,
 		  reject transfer to protect against malicious behaviour */
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"IBB file transfer send more data than expected\n");
 		purple_xfer_cancel_remote(xfer);
 	}
@@ -1090,13 +1090,13 @@ jabber_si_xfer_ibb_open_cb(JabberStream *js, const char *who, const char *id,
 			return TRUE;
 		} else {
 			/* failed to create IBB session */
-			purple_debug_error("jabber", "failed to create IBB session\n");
+			purple_debug_error("xmpp2", "failed to create IBB session\n");
 			purple_xfer_cancel_remote(xfer);
 			return FALSE;
 		}
 	} else {
 		/* we got an IBB <open/> for an unknown file transfer, pass along... */
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"IBB open did not match any SI file transfer\n");
 		return FALSE;
 	}
@@ -1175,7 +1175,7 @@ jabber_si_xfer_ibb_send_init(JabberStream *js, PurpleXfer *xfer)
 
 	} else {
 		/* failed to create IBB session */
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"failed to initiate IBB session for file transfer\n");
 		purple_xfer_cancel_local(xfer);
 	}
@@ -1326,7 +1326,7 @@ static void jabber_si_xfer_free(PurpleXfer *xfer)
 			close(jsx->local_streamhost_fd);
 		if (purple_xfer_get_type(xfer) == PURPLE_XFER_SEND &&
 			xfer->fd >= 0) {
-			purple_debug_info("jabber", "remove port mapping\n");
+			purple_debug_info("xmpp2", "remove port mapping\n");
 			purple_network_remove_port_mapping(xfer->fd);
 		}
 		if (jsx->connect_timeout > 0)
@@ -1340,7 +1340,7 @@ static void jabber_si_xfer_free(PurpleXfer *xfer)
 		}
 
 		if (jsx->ibb_session) {
-			purple_debug_info("jabber",
+			purple_debug_info("xmpp2",
 				"jabber_si_xfer_free: destroying IBB session\n");
 			jabber_ibb_session_destroy(jsx->ibb_session);
 		}
@@ -1349,7 +1349,7 @@ static void jabber_si_xfer_free(PurpleXfer *xfer)
 			purple_circ_buffer_destroy(jsx->ibb_buffer);
 		}
 
-		purple_debug_info("jabber", "jabber_si_xfer_free(): freeing jsx %p\n", jsx);
+		purple_debug_info("xmpp2", "jabber_si_xfer_free(): freeing jsx %p\n", jsx);
 
 		g_free(jsx->stream_id);
 		g_free(jsx->iq_id);
@@ -1374,7 +1374,7 @@ static void jabber_si_xfer_cancel_send(PurpleXfer *xfer)
 		jabber_ibb_session_close(jsx->ibb_session);
 	}
 	jabber_si_xfer_free(xfer);
-	purple_debug_info("jabber", "in jabber_si_xfer_cancel_send\n");
+	purple_debug_info("xmpp2", "in jabber_si_xfer_cancel_send\n");
 }
 
 
@@ -1406,7 +1406,7 @@ static void jabber_si_xfer_request_denied(PurpleXfer *xfer)
 	}
 
 	jabber_si_xfer_free(xfer);
-	purple_debug_info("jabber", "in jabber_si_xfer_request_denied\n");
+	purple_debug_info("xmpp2", "in jabber_si_xfer_request_denied\n");
 }
 
 
@@ -1418,7 +1418,7 @@ static void jabber_si_xfer_cancel_recv(PurpleXfer *xfer)
 		jabber_ibb_session_close(jsx->ibb_session);
 	}
 	jabber_si_xfer_free(xfer);
-	purple_debug_info("jabber", "in jabber_si_xfer_cancel_recv\n");
+	purple_debug_info("xmpp2", "in jabber_si_xfer_cancel_recv\n");
 }
 
 
@@ -1435,7 +1435,7 @@ static void jabber_si_xfer_send_disco_cb(JabberStream *js, const char *who,
 	JabberSIXfer *jsx = (JabberSIXfer *) xfer->data;
 
 	if (capabilities & JABBER_CAP_IBB) {
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"jabber_si_xfer_send_disco_cb: remote JID supports IBB\n");
 		jsx->stream_method |= STREAM_METHOD_IBB;
 	}
@@ -1596,7 +1596,7 @@ static void jabber_si_xfer_init(PurpleXfer *xfer)
 		if(jsx->iq_id)
 			jabber_iq_set_id(iq, jsx->iq_id);
 		else
-			purple_debug_error("jabber", "Sending SI result with new IQ id.\n");
+			purple_debug_error("xmpp2", "Sending SI result with new IQ id.\n");
 
 		jsx->accepted = TRUE;
 
@@ -1724,7 +1724,7 @@ void jabber_si_parse(JabberStream *js, const char *from, JabberIqType type,
 	 */
 	if (filesize_64 > G_MAXSIZE) {
 		/* Should this pop up a warning? */
-		purple_debug_warning("jabber", "Unable to transfer file (too large)"
+		purple_debug_warning("xmpp2", "Unable to transfer file (too large)"
 		                     " -- see #8477 for more details.");
 		return;
 	}

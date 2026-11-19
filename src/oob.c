@@ -96,7 +96,7 @@ static void jabber_oob_xfer_request_send(gpointer data, gint source, PurpleInput
 	if(len < 0 && errno == EAGAIN)
 		return;
 	else if(len < 0) {
-		purple_debug_error("jabber", "Write error on oob xfer!\n");
+		purple_debug_error("xmpp2", "Write error on oob xfer!\n");
 		purple_input_remove(jox->writeh);
 		purple_xfer_cancel_local(xfer);
 	}
@@ -142,7 +142,7 @@ static gssize jabber_oob_xfer_read(guchar **buffer, PurpleXfer *xfer) {
 				if (sscanf(lenstr, "Content-Length: %" G_GSIZE_FORMAT, &size) == 1)
 					purple_xfer_set_size(xfer, size);
 				else {
-					purple_debug_error("jabber", "Unable to parse Content-Length!\n");
+					purple_debug_error("xmpp2", "Unable to parse Content-Length!\n");
 					purple_xfer_cancel_local(xfer);
 					return 0;
 				}
@@ -156,7 +156,7 @@ static gssize jabber_oob_xfer_read(guchar **buffer, PurpleXfer *xfer) {
 		}
 		return 0;
 	} else if (errno != EAGAIN) {
-		purple_debug_error("jabber", "Read error on oob xfer!\n");
+		purple_debug_error("xmpp2", "Read error on oob xfer!\n");
 		purple_xfer_cancel_local(xfer);
 	}
 

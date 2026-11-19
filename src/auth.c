@@ -82,52 +82,6 @@ static void disallow_plaintext_auth(PurpleAccount *account)
 		_("Server requires plaintext authentication over an unencrypted stream"));
 }
 
-#ifdef HAVE_CYRUS_SASL
-static void
-auth_old_pass_cb(PurpleConnection *gc, PurpleRequestFields *fields)
-{
-	PurpleAccount *account;
-	JabberStream *js;
-	const char *entry;
-	gboolean remember;
-
-	/* The password prompt dialog doesn't get disposed if the account disconnects */
-	if (!PURPLE_CONNECTION_IS_VALID(gc))
-		return;
-
-	account = purple_connection_get_account(gc);
-	js = purple_connection_get_protocol_data(gc);
-
-	entry = purple_request_fields_get_string(fields, "password");
-	remember = purple_request_fields_get_bool(fields, "remember");
-
-	if (!entry || !*entry)
-	{
-		purple_notify_error(account, NULL, _("Password is required to sign on."), NULL);
-		return;
-	}
-
-	if (remember)
-		purple_account_set_remember_password(account, TRUE);
-
-	purple_account_set_password(account, entry);
-
-	/* Restart our connection */
-	jabber_auth_start_old(js);
-}
-
-static void
-auth_no_pass_cb(PurpleConnection *gc, PurpleRequestFields *fields)
-{
-	/* The password prompt dialog doesn't get disposed if the account disconnects */
-	if (!PURPLE_CONNECTION_IS_VALID(gc))
-		return;
-
-	/* Disable the account as the user has cancelled connecting */
-	purple_account_set_enabled(purple_connection_get_account(gc), purple_core_get_ui(), FALSE);
-}
-#endif
-
 void
 jabber_auth_start(JabberStream *js, xmlnode *packet)
 {
@@ -165,12 +119,6 @@ jabber_auth_start(JabberStream *js, xmlnode *packet)
 
 	for (l = auth_mechs; l; l = l->next) {
 		JabberSaslMech *possible = l->data;
-
-		/* Is this the Cyrus SASL mechanism? */
-		if (purple_strequal(possible->name, "*")) {
-			js->auth_mech = possible;
-			break;
-		}
 
 		/* Can we find this mechanism in the server's list? */
 		if (g_slist_find_custom(mechanisms, possible->name, (GCompareFunc)strcmp)) {
@@ -366,17 +314,6 @@ void jabber_auth_start_old(JabberStream *js)
 		js->user->resource = g_strdup("Home");
 	}
 
-#ifdef HAVE_CYRUS_SASL
-	/* If we have Cyrus SASL, then passwords will have been set
-	 * to OPTIONAL for this protocol. So, we need to do our own
-	 * password prompting here
-	 */
-
-	if (!purple_account_get_password(account)) {
-		purple_account_request_password(account, G_CALLBACK(auth_old_pass_cb), G_CALLBACK(auth_no_pass_cb), js->gc);
-		return;
-	}
-#endif
 	iq = jabber_iq_new_query(js, JABBER_IQ_GET, "jabber:iq:auth");
 
 	query = xmlnode_get_child(iq->node, "query");
@@ -415,7 +352,7 @@ jabber_auth_handle_challenge(JabberStream *js, xmlnode *packet)
 
 		g_free(msg);
 	} else
-		purple_debug_warning("jabber", "Received unexpected (and unhandled) <challenge/>\n");
+		purple_debug_warning("xmpp2", "Received unexpected (and unhandled) <challenge/>\n");
 }
 
 void jabber_auth_handle_success(JabberStream *js, xmlnode *packet)
@@ -449,8 +386,7 @@ void jabber_auth_handle_success(JabberStream *js, xmlnode *packet)
 	}
 
 	/*
-	 * The stream will be reinitialized later in jabber_recv_cb_ssl() or
-	 * jabber_bosh_connection_send.
+	 * The stream will be reinitialized later in jabber_recv_cb_ssl().
 	 */
 	js->reinit = TRUE;
 	jabber_stream_set_state(js, JABBER_STREAM_POST_AUTH);
@@ -518,10 +454,6 @@ void jabber_auth_init(void)
 	gint count, i;
 
 	jabber_auth_add_mech(jabber_auth_get_plain_mech());
-	jabber_auth_add_mech(jabber_auth_get_digest_md5_mech());
-#ifdef HAVE_CYRUS_SASL
-	jabber_auth_add_mech(jabber_auth_get_cyrus_mech());
-#endif
 
 	tmp = jabber_auth_get_scram_mechs(&count);
 	for (i = 0; i < count; ++i)

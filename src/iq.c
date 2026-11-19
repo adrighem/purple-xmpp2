@@ -28,12 +28,7 @@
 
 #include "buddy.h"
 #include "disco.h"
-#include "google/gmail.h"
-#include "google/google.h"
-#include "google/jingleinfo.h"
-#include "google/google_session.h"
 #include "iq.h"
-#include "jingle/jingle.h"
 #include "oob.h"
 #include "roster.h"
 #include "si.h"
@@ -257,14 +252,17 @@ static void jabber_iq_version_parse(JabberStream *js, const char *from,
 			ui_version = g_hash_table_lookup(ui_info, "version");
 		}
 
+		/* XEP-0092: name the plugin, mention the host application */
+		xmlnode_insert_data(xmlnode_new_child(query, "name"), XMPP2_PACKAGE, -1);
 		if(NULL != ui_name && NULL != ui_version) {
-			char *version_complete = g_strdup_printf("%s (libpurple " VERSION ")", ui_version);
-			xmlnode_insert_data(xmlnode_new_child(query, "name"), ui_name, -1);
+			char *version_complete = g_strdup_printf(
+				XMPP2_VERSION " (%s %s, libpurple " VERSION ")",
+				ui_name, ui_version);
 			xmlnode_insert_data(xmlnode_new_child(query, "version"), version_complete, -1);
 			g_free(version_complete);
 		} else {
-			xmlnode_insert_data(xmlnode_new_child(query, "name"), "libpurple", -1);
-			xmlnode_insert_data(xmlnode_new_child(query, "version"), VERSION, -1);
+			xmlnode_insert_data(xmlnode_new_child(query, "version"),
+				XMPP2_VERSION " (libpurple " VERSION ")", -1);
 		}
 
 #if 0
@@ -358,7 +356,7 @@ void jabber_iq_parse(JabberStream *js, xmlnode *packet)
 	from_id = jabber_id_new(from);
 
 	if (from && !from_id) {
-		purple_debug_error("jabber", "Received an iq with an invalid from: %s\n", from);
+		purple_debug_error("xmpp2", "Received an iq with an invalid from: %s\n", from);
 		return;
 	}
 
@@ -385,7 +383,7 @@ void jabber_iq_parse(JabberStream *js, xmlnode *packet)
 	}
 
 	if (type == JABBER_IQ_NONE) {
-		purple_debug_error("jabber", "IQ with invalid type ('%s') - ignoring.\n",
+		purple_debug_error("xmpp2", "IQ with invalid type ('%s') - ignoring.\n",
 						   iq_type ? iq_type : "(null)");
 		jabber_id_free(from_id);
 		return;
@@ -415,7 +413,7 @@ void jabber_iq_parse(JabberStream *js, xmlnode *packet)
 
 			jabber_iq_send(iq);
 		} else
-			purple_debug_error("jabber", "IQ of type '%s' missing id - ignoring.\n",
+			purple_debug_error("xmpp2", "IQ of type '%s' missing id - ignoring.\n",
 			                   iq_type);
 
 		jabber_id_free(from_id);
@@ -447,7 +445,7 @@ void jabber_iq_parse(JabberStream *js, xmlnode *packet)
 					expected_to = jabber_id_get_bare_jid(js->user);
 				}
 
-				purple_debug_error("jabber", "Got a result iq with id %s from %s instead of expected %s!\n", id, from ? from : "(null)", expected_to);
+				purple_debug_error("xmpp2", "Got a result iq with id %s from %s instead of expected %s!\n", id, from ? from : "(null)", expected_to);
 
 				g_free(expected_to);
 			}
@@ -480,7 +478,7 @@ void jabber_iq_parse(JabberStream *js, xmlnode *packet)
 		}
 	}
 
-	purple_debug_misc("jabber", "Unhandled IQ with id %s\n", id);
+	purple_debug_misc("xmpp2", "Unhandled IQ with id %s\n", id);
 
 	/* If we get here, send the default error reply mandated by XMPP-CORE */
 	if(type == JABBER_IQ_SET || type == JABBER_IQ_GET) {
@@ -560,14 +558,7 @@ void jabber_iq_init(void)
 	iq_handlers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 	signal_iq_handlers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
-	jabber_iq_register_handler("jingle", JINGLE, jingle_parse);
-	jabber_iq_register_handler("mailbox", NS_GOOGLE_MAIL_NOTIFY,
-			jabber_gmail_poke);
-	jabber_iq_register_handler("new-mail", NS_GOOGLE_MAIL_NOTIFY,
-			jabber_gmail_poke);
 	jabber_iq_register_handler("ping", NS_PING, jabber_ping_parse);
-	jabber_iq_register_handler("query", NS_GOOGLE_JINGLE_INFO,
-			jabber_google_handle_jingle_info);
 	jabber_iq_register_handler("query", NS_BYTESTREAMS,
 			jabber_bytestreams_parse);
 	jabber_iq_register_handler("query", NS_DISCO_INFO, jabber_disco_info_parse);
@@ -580,10 +571,6 @@ void jabber_iq_init(void)
 			jabber_roster_parse);
 	jabber_iq_register_handler("query", "jabber:iq:version",
 			jabber_iq_version_parse);
-#ifdef USE_VV
-	jabber_iq_register_handler("session", NS_GOOGLE_SESSION,
-		jabber_google_session_parse);
-#endif
 	jabber_iq_register_handler("block", NS_SIMPLE_BLOCKING, jabber_blocklist_parse_push);
 	jabber_iq_register_handler("unblock", NS_SIMPLE_BLOCKING, jabber_blocklist_parse_push);
 	jabber_iq_register_handler("time", NS_ENTITY_TIME, jabber_time_parse);

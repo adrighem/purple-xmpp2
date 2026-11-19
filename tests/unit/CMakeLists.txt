@@ -1,0 +1,19 @@
+# GTest unit tests of src/core/ (pure logic, no libpurple core, no network).
+# Add a test: tests/unit/test_<name>.c and one x2_unit_test() line below.
+
+function(x2_unit_test name)
+    add_executable(test-${name} test_${name}.c)
+    target_link_libraries(test-${name} PRIVATE x2core)
+    target_include_directories(test-${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(test-${name} PRIVATE c_std_11)
+    target_compile_options(test-${name} PRIVATE -Wall -Wextra)
+    if(XMPP2_WERROR)
+        target_compile_options(test-${name} PRIVATE -Werror)
+    endif()
+    add_test(NAME unit-${name} COMMAND test-${name})
+    set_tests_properties(unit-${name} PROPERTIES LABELS unit TIMEOUT 10)
+endfunction()
+
+x2_unit_test(sid)
+x2_unit_test(forward)
+x2_unit_test(dedup)

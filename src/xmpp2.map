@@ -1,0 +1,7 @@
+/* Version script: export nothing but the libpurple plugin entry point. */
+{
+	global:
+		purple_init_plugin;
+	local:
+		*;
+};

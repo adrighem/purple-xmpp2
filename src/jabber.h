@@ -36,12 +36,6 @@ typedef enum {
 	JABBER_CAP_IQ_SEARCH      = 1 << 7,
 	JABBER_CAP_IQ_REGISTER    = 1 << 8,
 
-	/* Google Talk extensions:
-	 * http://code.google.com/apis/talk/jep_extensions/extensions.html
-	 */
-	JABBER_CAP_GMAIL_NOTIFY   = 1 << 9,
-	JABBER_CAP_GOOGLE_ROSTER  = 1 << 10,
-
 	JABBER_CAP_PING			  = 1 << 11,
 	JABBER_CAP_ADHOC		  = 1 << 12,
 	JABBER_CAP_BLOCKING       = 1 << 13,
@@ -56,31 +50,27 @@ typedef enum {
 
 typedef struct _JabberStream JabberStream;
 
+#include "ext/x2types.h"
+
 #include <libxml/parser.h>
 #include <glib.h>
 #include "circbuffer.h"
 #include "connection.h"
 #include "dnsquery.h"
 #include "dnssrv.h"
-#include "media.h"
-#include "mediamanager.h"
 #include "roomlist.h"
 #include "sslconn.h"
 
 #include "namespaces.h"
+#include "xmpp2_internal.h"
 
 #include "auth.h"
 #include "iq.h"
 #include "jutil.h"
 #include "xmlnode.h"
 #include "buddy.h"
-#include "bosh.h"
 
-#ifdef HAVE_CYRUS_SASL
-#include <sasl/sasl.h>
-#endif
-
-#define CAPS0115_NODE "http://pidgin.im/"
+#define CAPS0115_NODE XMPP2_WEBSITE
 
 #define JABBER_DEFAULT_REQUIRE_TLS    "require_starttls"
 #define JABBER_DEFAULT_FT_PROXIES     ""
@@ -204,25 +194,9 @@ struct _JabberStream
 	gboolean reinit;
 
 	JabberCapabilities server_caps;
-	gboolean googletalk;
 	char *server_name;
 
-	char *gmail_last_time;
-	char *gmail_last_tid;
-
 	char *serverFQDN;
-
-#ifdef HAVE_CYRUS_SASL
-	sasl_conn_t *sasl;
-	sasl_callback_t *sasl_cb;
-	sasl_secret_t *sasl_secret;
-	const char *current_mech;
-	int auth_fail_count;
-
-	int sasl_state;
-	int sasl_maxbuf;
-	GString *sasl_mechs;
-#endif
 
 	gboolean unregistration;
 	PurpleAccountUnregistrationCb unregistration_cb;
@@ -269,28 +243,14 @@ struct _JabberStream
 	guint srv_rec_idx;
 	guint max_srv_rec_idx;
 
-	/* BOSH stuff */
-	PurpleBOSHConnection *bosh;
-
 	/**
 	 * This linked list contains PurpleUtilFetchUrlData structs
 	 * for when we lookup buddy icons from a url
 	 */
 	GSList *url_datas;
 
-	/* keep a hash table of JingleSessions */
-	GHashTable *sessions;
-
-	/* maybe this should only be present when USE_VV? */
-	gchar *stun_ip;
-	int stun_port;
-	PurpleDnsQueryData *stun_query;
-
-	/* stuff for Google's relay handling */
-	gchar *google_relay_token;
-	gchar *google_relay_host;
-	GList *google_relay_requests; /* the HTTP requests to get */
-												/* relay info */
+	/* State of the xmpp2 feature modules, see ext/x2stream.h */
+	X2Stream *x2;
 
 	/* XEP-0198 (stream management) state */
 	guint32 sm_outbound_count;
@@ -387,16 +347,14 @@ void jabber_add_identity(const gchar *category, const gchar *type, const gchar *
 gint jabber_identity_compare(gconstpointer a, gconstpointer b);
 
 /**
- * Returns true if this connection is over a secure (SSL) stream. Use this
- * instead of checking js->gsc because BOSH stores its PurpleSslConnection
- * members in its own data structure.
+ * Returns true if this connection is over a secure (SSL) stream.
  */
 gboolean jabber_stream_is_ssl(JabberStream *js);
 
 /**
  * Restart the "we haven't sent anything in a while and should send
  * something or the server will kick us off" timer (obviously
- * called when sending something.  It's exposed for BOSH.)
+ * called when sending something).
  */
 void jabber_stream_restart_inactivity_timer(JabberStream *js);
 
@@ -427,11 +385,6 @@ gboolean jabber_offline_message(const PurpleBuddy *buddy);
 int jabber_prpl_send_raw(PurpleConnection *gc, const char *buf, int len);
 GList *jabber_actions(PurplePlugin *plugin, gpointer context);
 
-gboolean jabber_audio_enabled(JabberStream *js, const char *unused);
-gboolean jabber_video_enabled(JabberStream *js, const char *unused);
-gboolean jabber_initiate_media(PurpleAccount *account, const char *who,
-		PurpleMediaSessionType type);
-PurpleMediaCaps jabber_get_media_caps(PurpleAccount *account, const char *who);
 gboolean jabber_can_receive_file(PurpleConnection *gc, const gchar *who);
 
 void jabber_plugin_init(PurplePlugin *plugin);

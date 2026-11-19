@@ -287,7 +287,7 @@ jabber_caps_load(void)
 					value->forms = g_list_append(value->forms, xmlnode_copy(child));
 				} else if (purple_strequal(child->name, "ext")) {
 					if (key->hash != NULL)
-						purple_debug_warning("jabber", "Ignoring exts when reading new-style caps\n");
+						purple_debug_warning("xmpp2", "Ignoring exts when reading new-style caps\n");
 					else {
 						/* TODO: Do we care about reading in the identities listed here? */
 						const char *identifier = xmlnode_get_attrib(child, "identifier");
@@ -312,7 +312,7 @@ jabber_caps_load(void)
 							g_hash_table_insert(exts->exts, g_strdup(identifier),
 							                    features);
 						} else
-							purple_debug_warning("jabber", "Caps ext %s had no features.\n",
+							purple_debug_warning("xmpp2", "Caps ext %s had no features.\n",
 							                     identifier);
 					}
 				}
@@ -428,7 +428,7 @@ jabber_caps_get_info_complete(jabber_caps_cbplususerdata *userdata)
 	}
 
 	if (userdata->ref != 1)
-		purple_debug_warning("jabber", "Lost a reference to caps cbdata: %d\n",
+		purple_debug_warning("xmpp2", "Lost a reference to caps cbdata: %d\n",
 		                     userdata->ref);
 }
 
@@ -467,7 +467,7 @@ jabber_caps_client_iqcb(JabberStream *js, const char *from, JabberIqType type,
 		}
 
 		if (!hash || !purple_strequal(hash, userdata->ver)) {
-			purple_debug_warning("jabber", "Could not validate caps info from "
+			purple_debug_warning("xmpp2", "Could not validate caps info from "
 			                     "%s. Expected %s, got %s\n",
 			                     xmlnode_get_attrib(packet, "from"),
 			                     userdata->ver, hash ? hash : "(null)");
@@ -545,7 +545,7 @@ jabber_caps_ext_iqcb(JabberStream *js, const char *from, JabberIqType type,
 
 	/* TODO: I don't see how this can actually happen, but it crashed khc. */
 	if (!node_exts) {
-		purple_debug_error("jabber", "Couldn't find JabberCapsNodeExts. If you "
+		purple_debug_error("xmpp2", "Couldn't find JabberCapsNodeExts. If you "
 				"see this, please tell darkrain42 and save your debug log.\n"
 				"JabberCapsClientInfo = %p\n", userdata->data->info);
 
@@ -553,7 +553,7 @@ jabber_caps_ext_iqcb(JabberStream *js, const char *from, JabberIqType type,
 		/* Try once more to find the exts and then fail */
 		node_exts = jabber_caps_find_exts_by_node(userdata->data->node);
 		if (node_exts) {
-			purple_debug_info("jabber", "Found the exts on the second try.\n");
+			purple_debug_info("xmpp2", "Found the exts on the second try.\n");
 			if (userdata->data->info)
 				userdata->data->info->exts = node_exts;
 			else
@@ -598,7 +598,7 @@ void jabber_caps_get_info(JabberStream *js, const char *who, const char *node,
 	jabber_caps_cbplususerdata *userdata;
 
 	if (exts && hash) {
-		purple_debug_misc("jabber", "Ignoring exts in new-style caps from %s\n",
+		purple_debug_misc("xmpp2", "Ignoring exts in new-style caps from %s\n",
 		                  who);
 		g_strfreev(exts);
 		exts = NULL;
@@ -911,7 +911,7 @@ void jabber_caps_calculate_own_hash(JabberStream *js) {
 
 	if (!jabber_identities && !jabber_features) {
 		/* This really shouldn't ever happen */
-		purple_debug_warning("jabber", "No features or identities, cannot calculate own caps hash.\n");
+		purple_debug_warning("xmpp2", "No features or identities, cannot calculate own caps hash.\n");
 		g_free(js->caps_hash);
 		js->caps_hash = NULL;
 		return;

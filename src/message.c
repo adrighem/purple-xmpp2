@@ -30,12 +30,12 @@
 #include "buddy.h"
 #include "chat.h"
 #include "data.h"
-#include "google/google.h"
 #include "message.h"
 #include "xmlnode.h"
 #include "pep.h"
 #include "smiley.h"
 #include "iq.h"
+#include "ext/ext.h"
 
 #include <string.h>
 
@@ -98,9 +98,24 @@ void jabber_message_free(JabberMessage *jm)
 	g_free(jm);
 }
 
+/*
+ * A message we sent ourselves, from another device (carbons, archive):
+ * show it as an outgoing line in the conversation with the recipient.
+ */
+static void handle_chat_out(JabberMessage *jm)
+{
+	GString *body = jm_body_with_oob(jm);
+
+	if (body && body->len)
+		x2_msg_write_outgoing(jm->js, jm->x2, body->str);
+
+	if (body)
+		g_string_free(body, TRUE);
+}
+
 static void handle_chat(JabberMessage *jm)
 {
-	JabberID *jid = jabber_id_new(jm->from);
+	JabberID *jid;
 
 	PurpleConnection *gc;
 	PurpleAccount *account;
@@ -108,6 +123,12 @@ static void handle_chat(JabberMessage *jm)
 	JabberBuddyResource *jbr;
 	GString *body;
 
+	if (jm->x2 && jm->x2->dir == X2_DIR_OUT) {
+		handle_chat_out(jm);
+		return;
+	}
+
+	jid = jabber_id_new(jm->from);
 	if(!jid)
 		return;
 
@@ -120,7 +141,8 @@ static void handle_chat(JabberMessage *jm)
 	if (jbr && jm->chat_state != JM_STATE_NONE)
 		jbr->chat_states = JABBER_CHAT_STATES_SUPPORTED;
 
-	switch(jm->chat_state) {
+	/* Chat states only matter for messages that happen now */
+	switch(x2_msg_is_live_incoming(jm->x2) ? jm->chat_state : JM_STATE_NONE) {
 		case JM_STATE_COMPOSING:
 			serv_got_typing(gc, jm->from, 0, PURPLE_TYPING);
 			break;
@@ -161,12 +183,6 @@ static void handle_chat(JabberMessage *jm)
 			serv_got_typing_stopped(gc, jm->from);
 	}
 
-	if (jm->js->googletalk && jm->body && jm->xhtml == NULL) {
-		char *tmp = jm->body;
-		jm->body = jabber_google_format_to_html(jm->body);
-		g_free(tmp);
-	}
-
 	body = jm_body_with_oob(jm);
 
 	if(body && body->len) {
@@ -186,7 +202,7 @@ static void handle_chat(JabberMessage *jm)
 			                                             jm->from, account);
 			if (conv && !purple_strequal(jm->from,
 			                         purple_conversation_get_name(conv))) {
-				purple_debug_info("jabber", "Binding conversation to %s\n",
+				purple_debug_info("xmpp2", "Binding conversation to %s\n",
 				                  jm->from);
 				purple_conversation_set_name(conv, jm->from);
 			}
@@ -206,7 +222,8 @@ static void handle_chat(JabberMessage *jm)
 			jbr->thread_id = g_strdup(jm->thread_id);
 		}
 
-		serv_got_im(gc, jm->from, body->str, 0, jm->sent);
+		serv_got_im(gc, jm->from, body->str,
+		            jm->delayed ? PURPLE_MESSAGE_DELAYED : 0, jm->sent);
 	}
 
 	jabber_id_free(jid);
@@ -517,6 +534,12 @@ jabber_message_request_data_cb(JabberData *data, gchar *alt,
 
 void jabber_message_parse(JabberStream *js, xmlnode *packet)
 {
+	x2_msg_receive(js, packet);
+}
+
+void jabber_message_deliver(JabberStream *js, X2Msg *ctx)
+{
+	xmlnode *packet = ctx->msg;
 	JabberMessage *jm;
 	const char *id, *from, *to, *type;
 	xmlnode *child;
@@ -534,8 +557,9 @@ void jabber_message_parse(JabberStream *js, xmlnode *packet)
 
 	jm = g_new0(JabberMessage, 1);
 	jm->js = js;
-	jm->sent = time(NULL);
-	jm->delayed = FALSE;
+	jm->x2 = ctx;
+	jm->sent = ctx->ts;
+	jm->delayed = ctx->delayed;
 	jm->chat_state = JM_STATE_NONE;
 
 	if(type) {
@@ -624,7 +648,7 @@ void jabber_message_parse(JabberStream *js, xmlnode *packet)
 					/* find a list of smileys ("cid" and "alt" text pairs)
 					  occuring in the message */
 					smiley_refs = jabber_message_get_refs_from_xmlnode(child);
-					purple_debug_info("jabber", "found %d smileys\n",
+					purple_debug_info("xmpp2", "found %d smileys\n",
 						g_list_length(smiley_refs));
 
 					if (smiley_refs) {
@@ -674,7 +698,7 @@ void jabber_message_parse(JabberStream *js, xmlnode *packet)
 					const gchar *cid = ref->cid;
 					gchar *alt = g_strdup(ref->alt);
 
-					purple_debug_info("jabber",
+					purple_debug_info("xmpp2",
 						"about to add custom smiley %s to the conv\n", alt);
 					if (purple_conv_custom_smiley_add(conv, alt, "cid", cid,
 						    TRUE)) {
@@ -682,7 +706,7 @@ void jabber_message_parse(JabberStream *js, xmlnode *packet)
 								jabber_data_find_remote_by_cid(js, from, cid);
 						/* if data is already known, we write it immediatly */
 						if (data) {
-							purple_debug_info("jabber",
+							purple_debug_info("xmpp2",
 								"data is already known\n");
 							purple_conv_custom_smiley_write(conv, alt,
 								jabber_data_get_data(data),
@@ -690,7 +714,7 @@ void jabber_message_parse(JabberStream *js, xmlnode *packet)
 							purple_conv_custom_smiley_close(conv, alt);
 						} else {
 							/* we need to request the smiley (data) */
-							purple_debug_info("jabber",
+							purple_debug_info("xmpp2",
 								"data is unknown, need to request it\n");
 							jabber_data_request(js, cid, from, alt, FALSE,
 							    jabber_message_request_data_cb, conv);
@@ -796,7 +820,7 @@ void jabber_message_parse(JabberStream *js, xmlnode *packet)
 
 	switch(jm->type) {
 		case JABBER_MESSAGE_OTHER:
-			purple_debug_info("jabber",
+			purple_debug_info("xmpp2",
 					"Received message of unknown type: %s\n", type);
 			/* FALL-THROUGH */
 		case JABBER_MESSAGE_NORMAL:
@@ -977,14 +1001,14 @@ jabber_message_smileyfy_xhtml(JabberMessage *jm, const char *xhtml)
 						jabber_data_create_from_data(purple_imgstore_get_data(image),
 									     purple_imgstore_get_size(image),
 									     jabber_message_get_mimetype_from_ext(ext), FALSE, js);
-					purple_debug_info("jabber",
+					purple_debug_info("xmpp2",
 							  "cache local smiley alt = %s, cid = %s\n",
 							  shortcut, jabber_data_get_cid(data));
 					jabber_data_associate_local(data, shortcut);
 					valid_smileys = g_list_append(valid_smileys, smiley);
 				} else {
 					has_too_large_smiley = TRUE;
-					purple_debug_warning("jabber", "Refusing to send smiley %s "
+					purple_debug_warning("xmpp2", "Refusing to send smiley %s "
 							"(too large, max is %d)\n",
 							purple_smiley_get_shortcut(smiley),
 							JABBER_DATA_MAX_SIZE);
@@ -1091,11 +1115,14 @@ void jabber_message_send(JabberMessage *jm)
 		if ((child = xmlnode_from_str(jm->xhtml, -1))) {
 			xmlnode_insert_child(message, child);
 		} else {
-			purple_debug_error("jabber",
+			purple_debug_error("xmpp2",
 					"XHTML translation/validation failed, returning: %s\n",
 					jm->xhtml);
 		}
 	}
+
+	/* Replaces the id above with a UUID that doubles as XEP-0359 origin-id */
+	x2_msg_prepare_outgoing(jm->js, message);
 
 	jabber_send(jm->js, message);
 
@@ -1154,7 +1181,7 @@ int jabber_message_send_im(PurpleConnection *gc, const char *who, const char *ms
 
 	if (purple_debug_is_verbose()) {
 		/* TODO: Maybe we need purple_debug_is_really_verbose? :) */
-		purple_debug_misc("jabber", "jabber_message_send_im: who='%s'\n"
+		purple_debug_misc("xmpp2", "jabber_message_send_im: who='%s'\n"
 		                            "\tmsg='%s'\n", who, msg);
 	}
 

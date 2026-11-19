@@ -43,7 +43,7 @@ static const JabberScramHash *mech_to_hash(const char *mech)
 			return &(hashes[i]);
 	}
 
-	purple_debug_error("jabber", "Unknown SCRAM mechanism %s\n", mech);
+	purple_debug_error("xmpp2", "Unknown SCRAM mechanism %s\n", mech);
 	g_return_val_if_reached(NULL);
 }
 
@@ -336,7 +336,7 @@ jabber_scram_feed_parser(JabberScramData *data, gchar *in, gchar **out)
 
 		*out = NULL;
 	} else {
-		purple_debug_error("jabber", "SCRAM: There is no step %d\n", data->step);
+		purple_debug_error("xmpp2", "SCRAM: There is no step %d\n", data->step);
 		return FALSE;
 	}
 
@@ -408,7 +408,7 @@ scram_start(JabberStream *js, xmlnode *mechanisms, xmlnode **out, char **error)
 	/* TODO: Channel binding */
 	dec_out = g_strdup_printf("%c,,%s", 'n', data->auth_message->str);
 	enc_out = purple_base64_encode((guchar *)dec_out, strlen(dec_out));
-	purple_debug_misc("jabber", "initial SCRAM message '%s'\n", dec_out);
+	purple_debug_misc("xmpp2", "initial SCRAM message '%s'\n", dec_out);
 
 	xmlnode_insert_data(reply, enc_out, -1);
 
@@ -448,7 +448,7 @@ scram_handle_challenge(JabberStream *js, xmlnode *challenge, xmlnode **out, char
 		goto out;
 	}
 
-	purple_debug_misc("jabber", "decoded challenge: %s\n", dec_in);
+	purple_debug_misc("xmpp2", "decoded challenge: %s\n", dec_in);
 
 	if (!jabber_scram_feed_parser(data, dec_in, &dec_out)) {
 		reply = xmlnode_new("abort");
@@ -463,7 +463,7 @@ scram_handle_challenge(JabberStream *js, xmlnode *challenge, xmlnode **out, char
 	reply = xmlnode_new("response");
 	xmlnode_set_namespace(reply, NS_XMPP_SASL);
 
-	purple_debug_misc("jabber", "decoded response: %s\n", dec_out ? dec_out : "(null)");
+	purple_debug_misc("xmpp2", "decoded response: %s\n", dec_out ? dec_out : "(null)");
 	if (dec_out) {
 		enc_out = purple_base64_encode((guchar *)dec_out, strlen(dec_out));
 		xmlnode_insert_data(reply, enc_out, -1);
@@ -520,7 +520,7 @@ scram_handle_success(JabberStream *js, xmlnode *packet, char **error)
 		return JABBER_SASL_STATE_FAIL;
 	}
 
-	purple_debug_misc("jabber", "decoded success: %s\n", dec_in);
+	purple_debug_misc("xmpp2", "decoded success: %s\n", dec_in);
 
 	if (!jabber_scram_feed_parser(data, dec_in, &dec_out) || dec_out != NULL) {
 		g_free(dec_in);

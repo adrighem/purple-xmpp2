@@ -35,8 +35,6 @@
 
 #include "buddy.h"
 #include "chat.h"
-#include "google/google.h"
-#include "google/google_presence.h"
 #include "presence.h"
 #include "iq.h"
 #include "jutil.h"
@@ -44,6 +42,7 @@
 
 #include "usermood.h"
 #include "usertune.h"
+#include "ext/ext.h"
 
 static GHashTable *presence_handlers = NULL;
 
@@ -73,7 +72,7 @@ str_to_presence_type(const char *type)
 		if (purple_strequal(type, jabber_presence_types[i].name))
 			return jabber_presence_types[i].type;
 
-	purple_debug_warning("jabber", "Unknown presence type '%s'\n", type);
+	purple_debug_warning("xmpp2", "Unknown presence type '%s'\n", type);
 	return JABBER_PRESENCE_AVAILABLE;
 }
 
@@ -198,7 +197,7 @@ void jabber_presence_send(JabberStream *js, gboolean force)
 
 	/* we don't want to send presence before we've gotten our roster */
 	if (js->state != JABBER_STREAM_CONNECTED) {
-		purple_debug_misc("jabber", "attempt to send presence before roster retrieved\n");
+		purple_debug_misc("xmpp2", "attempt to send presence before roster retrieved\n");
 		return;
 	}
 
@@ -209,9 +208,6 @@ void jabber_presence_send(JabberStream *js, gboolean force)
 	/* changing the buzz state has to trigger a re-broadcasting of the presence for caps */
 
 	tune = purple_presence_get_status(p, "tune");
-	if (js->googletalk && !stripped && purple_status_is_active(tune)) {
-		stripped = jabber_google_presence_outgoing(tune);
-	}
 
 	/* check if there are any differences to the <presence> and send them in that case */
 	if (force || allowBuzz != js->allowBuzz || js->old_state != state ||
@@ -308,9 +304,6 @@ xmlnode *jabber_presence_create_js(JabberStream *js, JabberBuddyState state, con
 {
 	xmlnode *show, *status, *presence, *pri, *c;
 	const char *show_string = NULL;
-#ifdef USE_VV
-	gboolean audio_enabled, video_enabled;
-#endif
 
 	presence = xmlnode_new("presence");
 
@@ -361,27 +354,6 @@ xmlnode *jabber_presence_create_js(JabberStream *js, JabberBuddyState state, con
 	xmlnode_set_attrib(c, "hash", "sha-1");
 	xmlnode_set_attrib(c, "ver", jabber_caps_get_own_hash(js));
 
-#ifdef USE_VV
-	/*
-	 * MASSIVE HUGE DISGUSTING HACK
-	 * This is a huge hack. As far as I can tell, Google Talk's gmail client
-	 * doesn't bother to check the actual features we advertise; they
-	 * just assume that if we specify a 'voice-v1' ext (ignoring that
-	 * these are to be assigned no semantic value), we support receiving voice
-	 * calls.
-	 *
-	 * Ditto for 'video-v1'.
-	 */
-	audio_enabled = jabber_audio_enabled(js, NULL /* unused */);
-	video_enabled = jabber_video_enabled(js, NULL /* unused */);
-
-	if (audio_enabled && video_enabled)
-		xmlnode_set_attrib(c, "ext", "voice-v1 camera-v1 video-v1");
-	else if (audio_enabled)
-		xmlnode_set_attrib(c, "ext", "voice-v1");
-	else if (video_enabled)
-		xmlnode_set_attrib(c, "ext", "camera-v1 video-v1");
-#endif
 
 	return presence;
 }
@@ -508,9 +480,6 @@ jabber_presence_set_capabilities(JabberCapsClientInfo *info, GList *exts,
 	jbr->caps.info = info;
 	jbr->caps.exts = exts;
 
-	purple_prpl_got_media_caps(
-			purple_connection_get_account(userdata->js->gc),
-			userdata->from);
 	if (info == NULL)
 		goto out;
 
@@ -649,8 +618,10 @@ handle_presence_chat(JabberStream *js, JabberPresence *presence, xmlnode *packet
 			purple_conv_chat_user_set_flags(PURPLE_CONV_CHAT(chat->conv), presence->jid_from->resource,
 					flags);
 
-		if (is_our_resource && chat->joined == 0)
+		if (is_our_resource && chat->joined == 0) {
 			chat->joined = time(NULL);
+			x2_ext_chat_joined(js, chat);
+		}
 
 	} else if (presence->type == JABBER_PRESENCE_UNAVAILABLE) {
 		gboolean nick_change = FALSE;
@@ -695,7 +666,7 @@ handle_presence_chat(JabberStream *js, JabberPresence *presence, xmlnode *packet
 
 				/* nick change */
 				if (!nick) {
-					purple_debug_warning("jabber", "Chat presence indicating a nick change, but no new nickname!\n");
+					purple_debug_warning("xmpp2", "Chat presence indicating a nick change, but no new nickname!\n");
 				} else {
 					nick_change = TRUE;
 
@@ -827,14 +798,14 @@ handle_presence_contact(JabberStream *js, JabberPresence *presence)
 	conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM,
 			buddy_name, account);
 	if (conv) {
-		purple_debug_info("jabber", "Changed conversation binding from %s to %s\n",
+		purple_debug_info("xmpp2", "Changed conversation binding from %s to %s\n",
 				purple_conversation_get_name(conv), buddy_name);
 		purple_conversation_set_name(conv, buddy_name);
 	}
 
 	if (b == NULL) {
 		if (presence->jb != js->user_jb) {
-			purple_debug_warning("jabber", "Got presence for unknown buddy %s on account %s (%p)\n",
+			purple_debug_warning("xmpp2", "Got presence for unknown buddy %s on account %s (%p)\n",
 					buddy_name, purple_account_get_username(account), account);
 			g_free(buddy_name);
 			return FALSE;
@@ -884,7 +855,6 @@ handle_presence_contact(JabberStream *js, JabberPresence *presence)
 
 	jbr = jabber_buddy_find_resource(presence->jb, NULL);
 	if (jbr) {
-		jabber_google_presence_incoming(js, buddy_name, jbr);
 		purple_prpl_got_user_status(account, buddy_name,
 				jabber_buddy_state_get_status_id(jbr->state),
 				"priority", jbr->priority,
@@ -928,7 +898,7 @@ void jabber_presence_parse(JabberStream *js, xmlnode *packet)
 
 	presence.jid_from = jabber_id_new(presence.from);
 	if (presence.jid_from == NULL) {
-		purple_debug_error("jabber", "Ignoring presence with malformed 'from' "
+		purple_debug_error("xmpp2", "Ignoring presence with malformed 'from' "
 		                   "JID: %s\n", presence.from);
 		return;
 	}
@@ -996,14 +966,14 @@ void jabber_presence_parse(JabberStream *js, xmlnode *packet)
 		 * acknowledging this (and the others) at some point. */
 		goto out;
 	} else if (presence.type == JABBER_PRESENCE_PROBE) {
-		purple_debug_warning("jabber", "Ignoring presence probe\n");
+		purple_debug_warning("xmpp2", "Ignoring presence probe\n");
 		goto out;
 	} else if (presence.type == JABBER_PRESENCE_UNAVAILABLE) {
 		presence.state = JABBER_BUDDY_STATE_UNAVAILABLE;
 	} else if (presence.type == JABBER_PRESENCE_UNSUBSCRIBED) {
 		presence.state = JABBER_BUDDY_STATE_UNKNOWN;
 	} else {
-		purple_debug_warning("jabber", "Ignoring presence with invalid type "
+		purple_debug_warning("xmpp2", "Ignoring presence with invalid type "
 		                     "'%s'\n", type);
 		goto out;
 	}
@@ -1130,14 +1100,14 @@ parse_priority(JabberStream *js, JabberPresence *presence, xmlnode *priority)
 	char *p = xmlnode_get_data(priority);
 
 	if (presence->priority != 0)
-		purple_debug_warning("jabber", "presence stanza received with multiple "
+		purple_debug_warning("xmpp2", "presence stanza received with multiple "
 		                     "priority children!?\n");
 
 	if (p) {
 		presence->priority = atoi(p);
 		g_free(p);
 	} else
-		purple_debug_warning("jabber", "Empty <priority/> in presence!\n");
+		purple_debug_warning("xmpp2", "Empty <priority/> in presence!\n");
 }
 
 static void
@@ -1146,7 +1116,7 @@ parse_show(JabberStream *js, JabberPresence *presence, xmlnode *show)
 	char *cdata;
 
 	if (presence->type != JABBER_PRESENCE_AVAILABLE) {
-		purple_debug_warning("jabber", "<show/> present on presence, but "
+		purple_debug_warning("xmpp2", "<show/> present on presence, but "
 		                               "type is not default ('available')\n");
 		return;
 	}
@@ -1156,7 +1126,7 @@ parse_show(JabberStream *js, JabberPresence *presence, xmlnode *show)
 		presence->state = jabber_buddy_show_get_state(cdata);
 		g_free(cdata);
 	} else
-		purple_debug_warning("jabber", "<show/> present on presence, but "
+		purple_debug_warning("xmpp2", "<show/> present on presence, but "
 		                               "no contents!\n");
 }
 
@@ -1184,7 +1154,7 @@ parse_idle(JabberStream *js, JabberPresence *presence, xmlnode *query)
 	if (seconds) {
 		presence->idle = atoi(seconds);
 		if (presence->idle < 0) {
-			purple_debug_warning("jabber", "Received bogus idle time %s\n", seconds);
+			purple_debug_warning("xmpp2", "Received bogus idle time %s\n", seconds);
 			presence->idle = 0;
 		}
 	}
@@ -1226,7 +1196,7 @@ parse_muc_user(JabberStream *js, JabberPresence *presence, xmlnode *x)
 	xmlnode *status;
 
 	if (presence->chat == NULL) {
-		purple_debug_warning("jabber", "Ignoring MUC gloop on non-MUC presence\n");
+		purple_debug_warning("xmpp2", "Ignoring MUC gloop on non-MUC presence\n");
 		return;
 	}
 
@@ -1242,7 +1212,7 @@ parse_muc_user(JabberStream *js, JabberPresence *presence, xmlnode *x)
 
 		val = atoi(code);
 		if (val == 0 || val < 0) {
-			purple_debug_warning("jabber", "Ignoring bogus status code '%s'\n",
+			purple_debug_warning("xmpp2", "Ignoring bogus status code '%s'\n",
 			                               code);
 			continue;
 		}

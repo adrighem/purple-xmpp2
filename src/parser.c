@@ -50,7 +50,7 @@ jabber_parser_element_start_libxml(void *user_data,
 			/* We were expecting a <stream:stream/> opening stanza, but
 			 * didn't get it. Bad!
 			 */
-			purple_debug_error("jabber", "Expecting stream header, got %s with "
+			purple_debug_error("xmpp2", "Expecting stream header, got %s with "
 			                   "xmlns %s\n", element_name, namespace);
 			purple_connection_error_reason(js->gc,
 					PURPLE_CONNECTION_ERROR_AUTHENTICATION_IMPOSSIBLE,
@@ -81,7 +81,7 @@ jabber_parser_element_start_libxml(void *user_data,
 				}
 
 				if (js->protocol_version.major == 0 && js->protocol_version.minor != 9) {
-					purple_debug_warning("jabber", "Treating version %s as 0.9 for backward "
+					purple_debug_warning("xmpp2", "Treating version %s as 0.9 for backward "
 					                     "compatibility\n", attrib);
 				}
 				g_free(attrib);
@@ -107,7 +107,7 @@ jabber_parser_element_start_libxml(void *user_data,
 			 * in this parsing code.
 			 */
 			js->stream_id = g_strdup("");
-			purple_debug_info("jabber", "Server failed to specify a stream "
+			purple_debug_info("xmpp2", "Server failed to specify a stream "
 			                  "ID (underspecified in rfc3920, but intended "
 			                  "to be a MUST; digest legacy auth may fail.\n");
 #endif
@@ -207,7 +207,7 @@ jabber_parser_structured_error_handler(void *user_data, const xmlError *error)
 		 */
 		return;
 
-	purple_debug_error("jabber", "XML parser error for JabberStream %p: "
+	purple_debug_error("xmpp2", "XML parser error for JabberStream %p: "
 								 "Domain %i, code %i, level %i: %s",
 					   js,
 					   error->domain, error->code, error->level,
@@ -290,16 +290,16 @@ void jabber_parser_process(JabberStream *js, const char *buf, int len)
 
 		switch (level) {
 			case XML_ERR_NONE:
-				purple_debug_info("jabber", "xmlParseChunk returned info %i\n", ret);
+				purple_debug_info("xmpp2", "xmlParseChunk returned info %i\n", ret);
 				break;
 			case XML_ERR_WARNING:
-				purple_debug_warning("jabber", "xmlParseChunk returned warning %i\n", ret);
+				purple_debug_warning("xmpp2", "xmlParseChunk returned warning %i\n", ret);
 				break;
 			case XML_ERR_ERROR:
-				purple_debug_error("jabber", "xmlParseChunk returned error %i\n", ret);
+				purple_debug_error("xmpp2", "xmlParseChunk returned error %i\n", ret);
 				break;
 			case XML_ERR_FATAL:
-				purple_debug_error("jabber", "xmlParseChunk returned fatal %i\n", ret);
+				purple_debug_error("xmpp2", "xmlParseChunk returned fatal %i\n", ret);
 				purple_connection_error_reason (js->gc,
 				                                PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
 				                                _("XML Parse error"));

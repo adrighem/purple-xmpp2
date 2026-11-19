@@ -89,7 +89,7 @@ jabber_data_create_from_xml(xmlnode *tag)
 
 	/* check if this is a "data" tag */
 	if (!purple_strequal(tag->name, "data")) {
-		purple_debug_error("jabber", "Invalid data element\n");
+		purple_debug_error("xmpp2", "Invalid data element\n");
 		return NULL;
 	}
 
@@ -97,14 +97,14 @@ jabber_data_create_from_xml(xmlnode *tag)
 	type = xmlnode_get_attrib(tag, "type");
 
 	if (!cid || !type) {
-		purple_debug_error("jabber", "cid or type missing\n");
+		purple_debug_error("xmpp2", "cid or type missing\n");
 		return NULL;
 	}
 
 	raw_data = xmlnode_get_data(tag);
 
 	if (raw_data == NULL || *raw_data == '\0') {
-		purple_debug_error("jabber", "data element was empty");
+		purple_debug_error("xmpp2", "data element was empty");
 		g_free(raw_data);
 		return NULL;
 	}
@@ -114,7 +114,7 @@ jabber_data_create_from_xml(xmlnode *tag)
 	g_free(raw_data);
 
 	if (data->data == NULL) {
-		purple_debug_error("jabber", "Malformed base64 data\n");
+		purple_debug_error("xmpp2", "Malformed base64 data\n");
 		g_free(data);
 		return NULL;
 	}
@@ -247,17 +247,17 @@ jabber_data_has_valid_hash(const JabberData *data)
 				ret = purple_strequal(digest, hash_value);
 
 				if (!ret)
-					purple_debug_warning("jabber", "Unable to validate BoB "
+					purple_debug_warning("xmpp2", "Unable to validate BoB "
 					                     "hash; expecting %s, got %s\n",
 					                     cid, digest);
 
 				g_free(digest);
 			} else {
-				purple_debug_warning("jabber", "Unable to validate BoB hash; "
+				purple_debug_warning("xmpp2", "Unable to validate BoB hash; "
 				                     "unknown hash algorithm %s\n", hash_algo);
 			}
 		} else {
-			purple_debug_warning("jabber", "Malformed BoB CID\n");
+			purple_debug_warning("xmpp2", "Malformed BoB CID\n");
 		}
 
 		g_strfreev(sub_parts);
@@ -297,11 +297,11 @@ jabber_data_request_cb(JabberStream *js, const char *from,
 		}
 		cb(data, alt, userdata);
 	} else if (item_not_found) {
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"Responder didn't recognize requested data\n");
 		cb(NULL, alt, userdata);
 	} else {
-		purple_debug_warning("jabber", "Unknown response to data request\n");
+		purple_debug_warning("xmpp2", "Unknown response to data request\n");
 		cb(NULL, alt, userdata);
 	}
 
@@ -339,14 +339,14 @@ jabber_data_request(JabberStream *js, const gchar *cid, const gchar *who,
 const JabberData *
 jabber_data_find_local_by_alt(const gchar *alt)
 {
-	purple_debug_info("jabber", "looking up local data object with alt = %s\n", alt);
+	purple_debug_info("xmpp2", "looking up local data object with alt = %s\n", alt);
 	return g_hash_table_lookup(local_data_by_alt, alt);
 }
 
 const JabberData *
 jabber_data_find_local_by_cid(const gchar *cid)
 {
-	purple_debug_info("jabber", "lookup local data object with cid = %s\n", cid);
+	purple_debug_info("xmpp2", "lookup local data object with cid = %s\n", cid);
 	return g_hash_table_lookup(local_data_by_cid, cid);
 }
 
@@ -355,13 +355,13 @@ jabber_data_find_remote_by_cid(JabberStream *js, const gchar *who,
     const gchar *cid)
 {
 	const JabberData *data = g_hash_table_lookup(remote_data_by_cid, cid);
-	purple_debug_info("jabber", "lookup remote data object with cid = %s\n", cid);
+	purple_debug_info("xmpp2", "lookup remote data object with cid = %s\n", cid);
 
 	if (data == NULL) {
 		gchar *jid_cid =
 			g_strdup_printf("%s@%s/%s%s%s", js->user->node, js->user->domain,
 			    js->user->resource, who, cid);
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 		    "didn't find BoB object by pure CID, try including JIDs: %s\n",
 		    jid_cid);
 		data = g_hash_table_lookup(remote_data_by_cid, jid_cid);
@@ -375,7 +375,7 @@ jabber_data_associate_local(JabberData *data, const gchar *alt)
 {
 	g_return_if_fail(data != NULL);
 
-	purple_debug_info("jabber", "associating local data object\n alt = %s, cid = %s\n",
+	purple_debug_info("xmpp2", "associating local data object\n alt = %s, cid = %s\n",
 		alt , jabber_data_get_cid(data));
 	if (alt)
 		g_hash_table_insert(local_data_by_alt, g_strdup(alt), data);
@@ -397,7 +397,7 @@ jabber_data_associate_remote(JabberStream *js, const gchar *who, JabberData *dat
 		    js->user->resource, who, jabber_data_get_cid(data));
 	}
 
-	purple_debug_info("jabber", "associating remote BoB object with cid = %s\n",
+	purple_debug_info("xmpp2", "associating remote BoB object with cid = %s\n",
 		cid);
 
 	g_hash_table_insert(remote_data_by_cid, cid, data);
@@ -438,7 +438,7 @@ jabber_data_parse(JabberStream *js, const char *who, JabberIqType type,
 void
 jabber_data_init(void)
 {
-	purple_debug_info("jabber", "creating hash tables for data objects\n");
+	purple_debug_info("xmpp2", "creating hash tables for data objects\n");
 	local_data_by_alt = g_hash_table_new_full(g_str_hash, g_str_equal,
 		g_free, NULL);
 	local_data_by_cid = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -452,7 +452,7 @@ jabber_data_init(void)
 void
 jabber_data_uninit(void)
 {
-	purple_debug_info("jabber", "destroying hash tables for data objects\n");
+	purple_debug_info("xmpp2", "destroying hash tables for data objects\n");
 	g_hash_table_destroy(local_data_by_alt);
 	g_hash_table_destroy(local_data_by_cid);
 	g_hash_table_destroy(remote_data_by_cid);

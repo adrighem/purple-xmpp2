@@ -62,6 +62,7 @@ typedef struct _JabberMessage {
 	} chat_state;
 	GList *etc;
 	GList *eventitems;
+	X2Msg *x2;   /* inbound context, NULL for outgoing messages */
 } JabberMessage;
 
 void jabber_message_free(JabberMessage *jm);
@@ -69,6 +70,12 @@ void jabber_message_free(JabberMessage *jm);
 void jabber_message_send(JabberMessage *jm);
 
 void jabber_message_parse(JabberStream *js, xmlnode *packet);
+
+/**
+ * Delivers a message that the xmpp2 inbound pipeline did not consume.
+ * @param ctx  Context built by x2_msg_receive(), ctx->msg is shown.
+ */
+void jabber_message_deliver(JabberStream *js, X2Msg *ctx);
 int jabber_message_send_im(PurpleConnection *gc, const char *who, const char *msg,
 		PurpleMessageFlags flags);
 int jabber_message_send_chat(PurpleConnection *gc, int id, const char *message, PurpleMessageFlags flags);

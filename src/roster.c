@@ -27,8 +27,6 @@
 
 #include "buddy.h"
 #include "chat.h"
-#include "google/google.h"
-#include "google/google_roster.h"
 #include "presence.h"
 #include "roster.h"
 #include "iq.h"
@@ -60,7 +58,7 @@ static void roster_request_cb(JabberStream *js, const char *from,
 		 * likely constitutes a server-side misconfiguration (i.e.
 		 * explicitly not loading mod_roster...)
 		 */
-		purple_debug_error("jabber", "Error retrieving roster!?\n");
+		purple_debug_error("xmpp2", "Error retrieving roster!?\n");
 		jabber_stream_set_state(js, JABBER_STREAM_CONNECTED);
 		return;
 	}
@@ -78,15 +76,8 @@ static void roster_request_cb(JabberStream *js, const char *from,
 void jabber_roster_request(JabberStream *js)
 {
 	JabberIq *iq;
-	xmlnode *query;
 
 	iq = jabber_iq_new_query(js, JABBER_IQ_GET, "jabber:iq:roster");
-	query = xmlnode_get_child(iq->node, "query");
-
-	if (js->server_caps & JABBER_CAP_GOOGLE_ROSTER) {
-		xmlnode_set_attrib(query, "xmlns:gr", NS_GOOGLE_ROSTER);
-		xmlnode_set_attrib(query, "gr:ext", "2");
-	}
 
 	jabber_iq_set_callback(iq, roster_request_cb, NULL);
 	jabber_iq_send(iq);
@@ -161,7 +152,7 @@ static void add_purple_buddy_to_groups(JabberStream *js, const char *jid,
 			groups = g_slist_delete_link(groups, l);
 		} else {
 			/* This buddy isn't in the group on the server anymore */
-			purple_debug_info("jabber", "jabber_roster_parse(): Removing %s "
+			purple_debug_info("xmpp2", "jabber_roster_parse(): Removing %s "
 			                  "from group '%s' on the local list\n",
 			                  purple_buddy_get_name(b),
 			                  jabber_roster_group_get_global_name(g));
@@ -171,7 +162,7 @@ static void add_purple_buddy_to_groups(JabberStream *js, const char *jid,
 
 	if (groups) {
 		char *tmp = roster_groups_join(groups);
-		purple_debug_info("jabber", "jabber_roster_parse(): Adding %s to "
+		purple_debug_info("xmpp2", "jabber_roster_parse(): Adding %s to "
 		                  "groups: %s\n", jid, tmp);
 		g_free(tmp);
 	}
@@ -204,7 +195,7 @@ void jabber_roster_parse(JabberStream *js, const char *from,
 #endif
 
 	if (!jabber_is_own_account(js, from)) {
-		purple_debug_warning("jabber", "Received bogon roster push from %s\n",
+		purple_debug_warning("xmpp2", "Received bogon roster push from %s\n",
 		                     from);
 		return;
 	}
@@ -251,10 +242,6 @@ void jabber_roster_parse(JabberStream *js, const char *from,
 			remove_purple_buddies(js, jid);
 		} else {
 			GSList *groups = NULL;
-
-			if (js->server_caps & JABBER_CAP_GOOGLE_ROSTER)
-				if (!jabber_google_roster_incoming(js, item))
-					continue;
 
 			for(group = xmlnode_get_child(item, "group"); group; group = xmlnode_get_next_twin(group)) {
 				char *group_name = xmlnode_get_data(group);
@@ -321,7 +308,7 @@ static void jabber_roster_update(JabberStream *js, const char *name,
 	if (groups) {
 		char *tmp = roster_groups_join(groups);
 
-		purple_debug_info("jabber", "jabber_roster_update(%s): [Source: "
+		purple_debug_info("xmpp2", "jabber_roster_update(%s): [Source: "
 		                  "groups]: groups: %s\n", name, tmp);
 		g_free(tmp);
 	} else {
@@ -339,7 +326,7 @@ static void jabber_roster_update(JabberStream *js, const char *name,
 		}
 
 		tmp = roster_groups_join(groups);
-		purple_debug_info("jabber", "jabber_roster_update(%s): [Source: local blist]: groups: %s\n",
+		purple_debug_info("xmpp2", "jabber_roster_update(%s): [Source: local blist]: groups: %s\n",
 		                  name, tmp);
 		g_free(tmp);
 	}
@@ -361,11 +348,6 @@ static void jabber_roster_update(JabberStream *js, const char *name,
 
 	g_slist_free(groups);
 
-	if (js->server_caps & JABBER_CAP_GOOGLE_ROSTER) {
-		jabber_google_roster_outgoing(js, query, item);
-		xmlnode_set_attrib(query, "xmlns:gr", NS_GOOGLE_ROSTER);
-		xmlnode_set_attrib(query, "gr:ext", "2");
-	}
 	jabber_iq_send(iq);
 }
 
@@ -396,7 +378,7 @@ void jabber_roster_add_buddy(PurpleConnection *gc, PurpleBuddy *buddy,
 		 * This is the same thing Bonjour does. If it causes problems, move
 		 * it to an idle callback.
 		 */
-		purple_debug_warning("jabber", "Cowardly refusing to add a MUC user "
+		purple_debug_warning("xmpp2", "Cowardly refusing to add a MUC user "
 		                     "to your buddy list and removing the buddy. "
 		                     "Buddies can only be added by real (non-MUC) "
 		                     "JID\n");
@@ -416,7 +398,7 @@ void jabber_roster_add_buddy(PurpleConnection *gc, PurpleBuddy *buddy,
 
 	jb = jabber_buddy_find(js, who, FALSE);
 
-	purple_debug_info("jabber", "jabber_roster_add_buddy(): Adding %s\n", who);
+	purple_debug_info("xmpp2", "jabber_roster_add_buddy(): Adding %s\n", who);
 
 	jabber_roster_update(js, who, NULL);
 
@@ -440,7 +422,7 @@ void jabber_roster_alias_change(PurpleConnection *gc, const char *name, const ch
 	if(b != NULL) {
 		purple_blist_alias_buddy(b, alias);
 
-		purple_debug_info("jabber", "jabber_roster_alias_change(): Aliased %s to %s\n",
+		purple_debug_info("xmpp2", "jabber_roster_alias_change(): Aliased %s to %s\n",
 				name, alias ? alias : "(null)");
 
 		jabber_roster_update(gc->proto_data, name, NULL);
@@ -463,7 +445,7 @@ void jabber_roster_group_change(PurpleConnection *gc, const char *name,
 		buddies = g_slist_remove(buddies, b);
 	}
 
-	purple_debug_info("jabber", "jabber_roster_group_change(): Moving %s from %s to %s\n",
+	purple_debug_info("xmpp2", "jabber_roster_group_change(): Moving %s from %s to %s\n",
 	                  name, old_group, new_group);
 
 	jabber_roster_update(gc->proto_data, name, groups);
@@ -499,7 +481,7 @@ void jabber_roster_remove_buddy(PurpleConnection *gc, PurpleBuddy *buddy,
 			buddies = g_slist_remove(buddies, tmpbuddy);
 		}
 
-		purple_debug_info("jabber", "jabber_roster_remove_buddy(): "
+		purple_debug_info("xmpp2", "jabber_roster_remove_buddy(): "
 			"Removing %s from %s\n", purple_buddy_get_name(buddy),
 			jabber_roster_group_get_global_name(group));
 
@@ -513,7 +495,7 @@ void jabber_roster_remove_buddy(PurpleConnection *gc, PurpleBuddy *buddy,
 		xmlnode_set_attrib(item, "jid", name);
 		xmlnode_set_attrib(item, "subscription", "remove");
 
-		purple_debug_info("jabber", "jabber_roster_remove_buddy(): Removing %s\n",
+		purple_debug_info("xmpp2", "jabber_roster_remove_buddy(): Removing %s\n",
 		                  purple_buddy_get_name(buddy));
 
 		jabber_iq_send(iq);

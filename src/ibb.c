@@ -65,7 +65,7 @@ jabber_ibb_session_create_from_xmlnode(JabberStream *js, const char *from,
 	}
 
 	if (!sid || !block_size) {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"IBB session open tag requires sid and block-size attributes\n");
 		g_free(sess);
 		return NULL;
@@ -84,7 +84,7 @@ jabber_ibb_session_create_from_xmlnode(JabberStream *js, const char *from,
 void
 jabber_ibb_session_destroy(JabberIBBSession *sess)
 {
-	purple_debug_info("jabber", "IBB: destroying session %p %s\n", sess,
+	purple_debug_info("xmpp2", "IBB: destroying session %p %s\n", sess,
 		sess->sid);
 
 	if (jabber_ibb_session_get_state(sess) == JABBER_IBB_SESSION_OPENED) {
@@ -92,7 +92,7 @@ jabber_ibb_session_destroy(JabberIBBSession *sess)
 	}
 
 	if (sess->last_iq_id) {
-		purple_debug_info("jabber", "IBB: removing callback for <iq/> %s\n",
+		purple_debug_info("xmpp2", "IBB: removing callback for <iq/> %s\n",
 			sess->last_iq_id);
 		jabber_iq_remove_callback_by_id(jabber_ibb_session_get_js(sess),
 			sess->last_iq_id);
@@ -155,7 +155,7 @@ jabber_ibb_session_set_block_size(JabberIBBSession *sess, gsize size)
 	if (jabber_ibb_session_get_state(sess) == JABBER_IBB_SESSION_NOT_OPENED) {
 		sess->block_size = size;
 	} else {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"Can't set block size on an open IBB session\n");
 	}
 }
@@ -229,7 +229,7 @@ void
 jabber_ibb_session_open(JabberIBBSession *sess)
 {
 	if (jabber_ibb_session_get_state(sess) != JABBER_IBB_SESSION_NOT_OPENED) {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"jabber_ibb_session called on an already open stream\n");
 	} else {
 		JabberIq *set = jabber_iq_new(sess->js, JABBER_IQ_SET);
@@ -256,7 +256,7 @@ jabber_ibb_session_close(JabberIBBSession *sess)
 	JabberIBBSessionState state = jabber_ibb_session_get_state(sess);
 
 	if (state != JABBER_IBB_SESSION_OPENED && state != JABBER_IBB_SESSION_ERROR) {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"jabber_ibb_session_close called on a session that has not been"
 			"opened\n");
 	} else {
@@ -313,7 +313,7 @@ jabber_ibb_session_send_acknowledge_cb(JabberStream *js, const char *from,
 		}
 	} else {
 		/* the session has gone away, it was probably cancelled */
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"got response from send data, but IBB session is no longer active\n");
 	}
 }
@@ -324,14 +324,14 @@ jabber_ibb_session_send_data(JabberIBBSession *sess, gconstpointer data,
 {
 	JabberIBBSessionState state = jabber_ibb_session_get_state(sess);
 
-	purple_debug_info("jabber", "sending data block of %" G_GSIZE_FORMAT " bytes on IBB stream\n",
+	purple_debug_info("xmpp2", "sending data block of %" G_GSIZE_FORMAT " bytes on IBB stream\n",
 		size);
 
 	if (state != JABBER_IBB_SESSION_OPENED) {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"trying to send data on a non-open IBB session\n");
 	} else if (size > jabber_ibb_session_get_max_data_size(sess)) {
-		purple_debug_error("jabber",
+		purple_debug_error("xmpp2",
 			"trying to send a too large packet in the IBB session\n");
 	} else {
 		JabberIq *set = jabber_iq_new(jabber_ibb_session_get_js(sess),
@@ -349,12 +349,12 @@ jabber_ibb_session_send_data(JabberIBBSession *sess, gconstpointer data,
 
 		xmlnode_insert_child(set->node, data_element);
 
-		purple_debug_info("jabber",
+		purple_debug_info("xmpp2",
 			"IBB: setting send <iq/> callback for session %p %s\n", sess,
 			sess->sid);
 		jabber_iq_set_callback(set, jabber_ibb_session_send_acknowledge_cb, sess);
 		sess->last_iq_id = g_strdup(xmlnode_get_attrib(set->node, "id"));
-		purple_debug_info("jabber", "IBB: set sess->last_iq_id: %s\n",
+		purple_debug_info("xmpp2", "IBB: set sess->last_iq_id: %s\n",
 			sess->last_iq_id);
 		jabber_iq_send(set);
 
@@ -399,7 +399,7 @@ jabber_ibb_parse(JabberStream *js, const char *who, JabberIqType type,
 		if (!purple_strequal(who, jabber_ibb_session_get_who(sess))) {
 			/* the iq comes from a different JID than the remote JID of the
 			  session, ignore it */
-			purple_debug_error("jabber",
+			purple_debug_error("xmpp2",
 				"Got IBB iq from wrong JID, ignoring\n");
 		} else if (data) {
 			const gchar *seq_attr = xmlnode_get_attrib(child, "seq");
@@ -422,7 +422,7 @@ jabber_ibb_parse(JabberStream *js, const char *who, JabberIqType type,
 					g_free(base64);
 
 					if (rawdata) {
-						purple_debug_info("jabber",
+						purple_debug_info("xmpp2",
 							"got %" G_GSIZE_FORMAT " bytes of data on IBB stream\n",
 							size);
 						/* we accept other clients to send up to block-size
@@ -430,20 +430,20 @@ jabber_ibb_parse(JabberStream *js, const char *who, JabberIqType type,
 						 regarding the interpretation of this attribute
 						 (including previous versions of libpurple) */
 						if (size > jabber_ibb_session_get_block_size(sess)) {
-							purple_debug_error("jabber",
+							purple_debug_error("xmpp2",
 								"IBB: received a too large packet\n");
 							if (sess->error_cb)
 								sess->error_cb(sess);
 							g_free(rawdata);
 							return;
 						} else {
-							purple_debug_info("jabber",
+							purple_debug_info("xmpp2",
 								"calling IBB callback for received data\n");
 							sess->data_received_cb(sess, rawdata, size);
 						}
 						g_free(rawdata);
 					} else {
-						purple_debug_error("jabber",
+						purple_debug_error("xmpp2",
 							"IBB: invalid BASE64 data received\n");
 						if (sess->error_cb)
 							sess->error_cb(sess);
@@ -456,7 +456,7 @@ jabber_ibb_parse(JabberStream *js, const char *who, JabberIqType type,
 				jabber_iq_send(result);
 
 			} else {
-				purple_debug_error("jabber",
+				purple_debug_error("xmpp2",
 					"Received an out-of-order/invalid IBB packet\n");
 				sess->state = JABBER_IBB_SESSION_ERROR;
 
@@ -466,10 +466,10 @@ jabber_ibb_parse(JabberStream *js, const char *who, JabberIqType type,
 			}
 		} else if (close) {
 			sess->state = JABBER_IBB_SESSION_CLOSED;
-			purple_debug_info("jabber", "IBB: received close\n");
+			purple_debug_info("xmpp2", "IBB: received close\n");
 
 			if (sess->closed_cb) {
-				purple_debug_info("jabber", "IBB: calling closed handler\n");
+				purple_debug_info("xmpp2", "IBB: calling closed handler\n");
 				sess->closed_cb(sess);
 			}
 		}

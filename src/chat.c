@@ -316,7 +316,7 @@ JabberChat *jabber_join_chat(JabberStream *js, const char *room,
 		} else {
 			history_since_string = NULL;
 
-			purple_debug_error("jabber", "Invalid date format for history_since"
+			purple_debug_error("xmpp2", "Invalid date format for history_since"
 			                             " while requesting history: %s", history_since);
 		}
 	}
