@@ -66,6 +66,17 @@ SCRIPT
 kill "$W_PID" 2>/dev/null || true
 pass "watchdog: LIVE after 30 s, queued message shown, one notice (item 14)"
 
+# Frozen cursor: the next login fetches the gap again, but w1 (shown in
+# the incomplete session) is in the persisted ring and not shown twice.
+run_harness alice <<SCRIPT
+connect 30
+expect-debug cat=xmpp2-mam text=account archive LIVE
+sleep 2
+no-ev timeout=1 texteq=w1
+disconnect
+SCRIPT
+pass "after an incomplete catch-up the refetched gap shows nothing twice"
+
 # 15. Teardown during the catch-up delivers the queue before going offline.
 peer_bg "$WORK/t.log" bob --stay 30 --do "sleep 4" --do "send alice@localhost t1"
 T_PID=$PEER_PID

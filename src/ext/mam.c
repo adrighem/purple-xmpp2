@@ -66,8 +66,9 @@ x2_mam_remember(X2MamArchive *a, const X2Msg *m)
 		return;
 	x2_dedup_add(a->st->js->x2->dedup, m->key);
 	/* Keys without a trusted stanza-id are the ones the cursor cannot
-	 * cover: keep them across restarts. */
-	if (m->stanza_id == NULL) {
+	 * cover: keep them across restarts.  So are all keys while the cursor
+	 * is frozen: the next login fetches that gap again. */
+	if (m->stanza_id == NULL || a->frozen) {
 		x2_store_ring_add(x2_mam_store(a->st), a->jid, m->key);
 		x2_statefile_touch(a->st->sf);
 	}
