@@ -19,7 +19,7 @@ mkdir -p "$SCRATCH"
 ensure_venv() {
 	if [[ ! -x "$VENV/bin/python" ]]; then
 		python3 -m venv "$VENV"
-		"$VENV/bin/pip" -q --disable-pip-version-check install slixmpp
+		"$VENV/bin/pip" -q --disable-pip-version-check install -r "$ROOT/tests/integration/requirements.txt"
 	fi
 }
 

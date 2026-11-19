@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Manage the throwaway Prosody test server (podman).
-# Usage: run.sh start|stop|reset|status|logs|cert
+# Usage: [XMPP2_SERVER_PROFILE=full|nocarbons|nomam|noupload|a,b] run.sh start|stop|reset|status|logs|cert|cert
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,7 +9,17 @@ IMAGE="localhost/xmpp2-test-prosody"
 C2S_PORT="${XMPP2_TEST_C2S_PORT:-15222}"
 HTTP_PORT="${XMPP2_TEST_HTTP_PORT:-15280}"
 PASSWORD="${XMPP2_TEST_PASSWORD:-secret}"
+PROFILE="${XMPP2_SERVER_PROFILE:-full}"
 USERS=(alice bob carol)
+
+# Profile -> features to disable (comma list, see prosody.cfg.lua).
+case "$PROFILE" in
+full) DISABLE="" ;;
+nocarbons) DISABLE="carbons" ;;
+nomam) DISABLE="mam" ;;
+noupload) DISABLE="upload" ;;
+*) DISABLE="$PROFILE" ;; # custom comma list, e.g. carbons,mam
+esac
 
 running() {
 	[[ "$(podman inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || true)" == "true" ]]
@@ -35,12 +45,18 @@ wait_ready() {
 
 start() {
 	if running; then
-		info
-		return 0
+		local cur
+		cur="$(podman inspect -f '{{index .Config.Labels "xmpp2.profile"}}' "$NAME")"
+		if [[ "$cur" == "$PROFILE" ]]; then
+			info
+			return 0
+		fi
 	fi
 	podman rm -f "$NAME" >/dev/null 2>&1 || true
 	build
 	podman run -d --name "$NAME" \
+		--label "xmpp2.profile=${PROFILE}" \
+		-e "XMPP2_DISABLE=${DISABLE}" -e "XMPP2_HTTP_PORT=${HTTP_PORT}" \
 		-p "127.0.0.1:${C2S_PORT}:5222" \
 		-p "127.0.0.1:${HTTP_PORT}:5280" \
 		"$IMAGE" >/dev/null
@@ -58,6 +74,7 @@ stop() {
 }
 
 info() {
+	echo "XMPP_PROFILE=${PROFILE}"
 	echo "XMPP_HOST=localhost"
 	echo "XMPP_DOMAIN=localhost"
 	echo "XMPP_C2S_PORT=${C2S_PORT}"

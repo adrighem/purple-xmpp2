@@ -41,11 +41,15 @@ disconnect
 SCRIPT
 
 echo "== prpl=$PRPL plugin_dir=${PLUGIN_DIR:-<system>}"
-if ! harness alice "$WORK/alice.script" >"$WORK/alice.log" 2>"$WORK/alice.err"; then
+if ! harness alice "$WORK/alice.script" --debug >"$WORK/alice.log" 2>"$WORK/alice.err"; then
 	cat "$WORK/alice.log" "$WORK/alice.err" "$WORK/peer.log"
 	fail "harness script failed"
 fi
 cat "$WORK/alice.log"
+if [[ "$PRPL" == "prpl-xmpp2" ]]; then
+	# Assert only on our own debug category (never on "jabber").
+	grep -q "^DEBUG\[[0-9]\] xmpp2:" "$WORK/alice.err" || fail "no xmpp2 debug category output"
+fi
 wait "$PEER_PID" || { cat "$WORK/peer.log"; fail "peer script failed"; }
 grep -q "PEER recv chat .*: $PING" "$WORK/peer.log" || fail "peer never received $PING"
 pass "alice->bob and bob->alice 1:1 chat via $PRPL"

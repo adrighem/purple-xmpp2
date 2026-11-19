@@ -385,7 +385,8 @@ static void remove_tree(const char *path)
 		while ((name = g_dir_read_name(dir))) {
 			char *child = g_build_filename(path, name, NULL);
 
-			if (g_file_test(child, G_FILE_TEST_IS_DIR))
+			if (!g_file_test(child, G_FILE_TEST_IS_SYMLINK) &&
+			    g_file_test(child, G_FILE_TEST_IS_DIR))
 				remove_tree(child);
 			else
 				g_remove(child);

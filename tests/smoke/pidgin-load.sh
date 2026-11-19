@@ -52,20 +52,27 @@ grep -q "probing .*/$SO_NAME" "$LOG" || fail "pidgin never probed $SO_NAME"
 if grep -E "$SO_NAME.*(not usable|could not be loaded|unresolved|undefined symbol)" "$LOG"; then
 	fail "$SO_NAME failed to load"
 fi
-echo "OK: pidgin probed and loaded $SO_NAME"
+if grep -q "cannot register existing type" "$LOG"; then
+	fail "GType registration clash with built-in prpl-jabber"
+fi
+echo "OK: pidgin probed and loaded $SO_NAME "
 
-# Confirm the protocol id registers, using the headless harness when buildable.
+# Confirm both protocol ids register side by side, using the headless harness.
 # shellcheck source=../integration/lib.sh
 source "$ROOT/tests/integration/lib.sh"
 if command -v gcc >/dev/null && ensure_harness 2>/dev/null; then
 	: >"$WORK/empty.script"
-	if "$HARNESS" --prpl "$PRPL" --plugin-dir "$(dirname "$SO")" \
-		--user "smoke@localhost" --password x --script "$WORK/empty.script" \
-		>"$WORK/h.out" 2>"$WORK/h.err"; then
-		echo "OK: protocol $PRPL registered with libpurple"
-	else
-		grep "protocol" "$WORK/h.err" >&2 || true
-		fail "protocol $PRPL not registered"
-	fi
+	for id in "$PRPL" prpl-jabber; do
+		if ! "$HARNESS" --prpl "$id" --plugin-dir "$(dirname "$SO")" --debug \
+			--user "smoke@localhost" --password x --script "$WORK/empty.script" \
+			>"$WORK/h.out" 2>"$WORK/h.err"; then
+			grep "protocol" "$WORK/h.err" >&2 || true
+			fail "protocol $id not registered"
+		fi
+		if grep -q "cannot register existing type" "$WORK/h.err"; then
+			fail "GType clash when loading with $id"
+		fi
+		echo "OK: protocol $id registered with libpurple"
+	done
 fi
 echo "PASS: pidgin-load"

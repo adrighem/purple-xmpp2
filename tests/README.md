@@ -12,6 +12,11 @@ http_file_share (XEP-0363). Self-signed TLS, plaintext auth allowed.
     tests/server/run.sh start     # build image, run, register users
     tests/server/run.sh stop|reset|status|logs|cert
 
+Profiles: `XMPP2_SERVER_PROFILE=full|nocarbons|nomam|noupload` (or a custom
+comma list such as `carbons,mam`) switches features off; changing profile
+restarts the container. mod_offline is loaded, `max_archive_query_results`
+is 100 (matches the PLAN page size).
+
 Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 `conference.localhost`, upload `upload.localhost`. Users `alice`, `bob`,
 `carol`, password `secret`. Override with `XMPP2_TEST_C2S_PORT`,
@@ -27,7 +32,7 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   harness is offline, which is the basis for MAM catch-up tests.
 - `lib.sh` has shared helpers (venv, harness build, server, `peer`,
   `harness`). Scratch lives in `$XMPP2_SCRATCH` (default
-  `$TMPDIR/xmpp2-scratch-<uid>`); slixmpp is installed into a venv there.
+  `$TMPDIR/xmpp2-scratch-<uid>`); slixmpp (pinned in `requirements.txt`) is installed into a venv there.
 - `test_basic.sh` is the 1:1 baseline, both directions.
 
 Baseline with the built-in Pidgin jabber prpl, then the plugin under test:
@@ -45,3 +50,14 @@ checks the plugin is probed and loads, and that `prpl-xmpp2` registers.
 Exit 77 means skipped (plugin not built).
 
     tests/smoke/pidgin-load.sh [build/libxmpp2.so]
+
+## CMake / ctest
+
+`tests/CMakeLists.txt` (included via `if(BUILD_TESTING) add_subdirectory(tests)`)
+builds `xmpp2-harness` and registers tests by label: `unit` (export check,
+plus `tests/unit/` if present), `smoke`, `integration` (needs podman, serial).
+Missing tools give exit 77 (skipped).
+
+    ctest --test-dir build -L unit
+    ctest --test-dir build -L smoke
+    ctest --test-dir build -L integration

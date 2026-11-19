@@ -78,7 +78,7 @@ class Peer(slixmpp.ClientXMPP):
                 fwd = item["mam_result"]["forwarded"]["stanza"]
                 print(f"PEER-MAM {fwd['from']} {fwd['body']}", flush=True)
         elif cmd == "disco":
-            info = await self.plugin["xep_0030"].get_info(jid=rest or None)
+            info = await self.plugin["xep_0030"].get_info(jid=rest or self.boundjid.domain)
             ns = "{http://jabber.org/protocol/disco#info}feature"
             for feat in sorted(f.get("var") for f in info.xml.iter(ns)):
                 print(f"PEER-FEATURE {feat}", flush=True)
