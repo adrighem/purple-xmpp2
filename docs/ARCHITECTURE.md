@@ -632,10 +632,12 @@ request, and an empty file is refused. Then:
    `Content-Length`, slot headers, `Connection: close`): honours the account
    proxy, https through the purple SSL plugin (default port 443, checked),
    `include_headers=TRUE` to read the status line, `max_len` 64 KiB for the
-   response. Only `201 Created` is success; anything else, including a
-   redirect, is a failure: libpurple follows any `Location` header with a
-   GET (possibly over plain http) and that GET could answer 200. A server
-   that sends `Location` even with its 201 is therefore not supported.
+   response. 200, 201 and 204 are success (`x2_upload_put_status_ok()`:
+   XEP-0363 says 201, some servers differ); a 3xx fails with its own
+   "redirected" message and anything else fails with the code. libpurple
+   follows any `Location` header with a GET (possibly over plain http) and we
+   would see the status of that GET, so a server that redirects the PUT is
+   not supported.
 4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
    `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
    (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1

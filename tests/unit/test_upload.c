@@ -362,6 +362,23 @@ test_put_head_default_port_and_bad_mime(void)
 }
 
 static void
+test_put_status_ok(void)
+{
+	g_assert_true(x2_upload_put_status_ok(200));
+	g_assert_true(x2_upload_put_status_ok(201));
+	g_assert_true(x2_upload_put_status_ok(204));
+	g_assert_false(x2_upload_put_status_ok(202));
+	g_assert_false(x2_upload_put_status_ok(206));
+	g_assert_false(x2_upload_put_status_ok(301));
+	g_assert_false(x2_upload_put_status_ok(307));
+	g_assert_false(x2_upload_put_status_ok(400));
+	g_assert_false(x2_upload_put_status_ok(403));
+	g_assert_false(x2_upload_put_status_ok(413));
+	g_assert_false(x2_upload_put_status_ok(500));
+	g_assert_false(x2_upload_put_status_ok(0));
+}
+
+static void
 test_status_parse(void)
 {
 	int code = 0;
@@ -424,6 +441,7 @@ main(int argc, char **argv)
 	g_test_add_func("/upload/put-head", test_put_head);
 	g_test_add_func("/upload/put-head/defaults", test_put_head_default_port_and_bad_mime);
 	g_test_add_func("/upload/status", test_status_parse);
+	g_test_add_func("/upload/put-status-ok", test_put_status_ok);
 	g_test_add_func("/upload/message", test_message);
 	return g_test_run();
 }
