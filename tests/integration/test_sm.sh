@@ -45,6 +45,17 @@ sleep 3
 dump-debug
 clear-debug
 SCRIPT
+	# 2b. Raw XML (the XML console) is counted: two stanzas in one write,
+	# then an ack that would be "too high" if they were not.  An incomplete
+	# element is refused while SM is on.
+	cat <<SCRIPT
+raw <message to='bob@localhost' type='chat' id='raw-$TAG'><body>raw-$TAG</body></message><iq type='get' id='rawping-$TAG' to='localhost'><ping xmlns='urn:xmpp:ping'/></iq>
+expect-debug cat=xmpp2-sm timeout=10 text=, 0 unacked
+no-debug cat=xmpp2-sm timeout=1 text=but only
+raw-refused <message to='bob@localhost'>
+expect-debug cat=xmpp2-sm text=raw XML refused
+clear-debug
+SCRIPT
 	# 3. Drop TCP with one message unacked (the idle <r/> is 2 s away).
 	cat <<SCRIPT
 send bob@localhost drop-$TAG

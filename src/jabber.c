@@ -532,6 +532,15 @@ int jabber_prpl_send_raw(PurpleConnection *gc, const char *buf, int len)
 	 * to do things during the connection process.
 	 */
 
+	/* Stanzas from the XML console count for stream management too, or the
+	 * server's h overtakes ours (handled-count-too-high). */
+	if (!jabber_sm_outbound_raw(js, buf, len)) {
+		purple_notify_error(gc, _("XMPP stream management"),
+			_("Raw XML not sent"),
+			_("While stream management is active, raw XML must be one "
+			  "or more complete, well-formed elements."));
+		return -1;
+	}
 	jabber_send_raw(js, buf, len);
 	return (len < 0 ? (int)strlen(buf) : len);
 }

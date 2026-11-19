@@ -33,7 +33,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   (xmpp2* categories only), `join|leave|groupsend`, `buddy-add`, `focus`,
   `cmd`, `correct`, `upload|upload-fail|upload-drop`, `logcount`, `pref`,
   `drop` (shutdown() the c2s socket without a stream close, like a network
-  drop),
+  drop), `raw|raw-refused` (send XML through the prpl's `send_raw`, the XML
+  console path),
   `action TEXT` (run a prpl action by label), `answer N`/`no-request`
   (`purple_request_action()` has a recording UI: the script presses a
   button), `expect-account PRPL USER enabled= connected= exists=` (any account

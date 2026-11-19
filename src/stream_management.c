@@ -32,13 +32,18 @@
  *   never resent (no resumption yet).
  * - <r/> is batched: after SM_REQUEST_EVERY stanzas, or SM_REQUEST_IDLE_MS
  *   after the last stanza.  A server <r/> is answered at once.
- * - On a connection error, unacked <message> stanzas with a body are shown
- *   in their conversation as "may not have been delivered".
+ * - On a connection error or sign-off, unacked <message> stanzas with a
+ *   body are shown in their conversation as "may not have been delivered".
+ *   Only those are copied into the queue; other stanzas queue NULL.
+ * - <enable/> without resume='true' until M10 implements <resume/>.
+ * - Raw XML (XML console) is parsed and counted, see
+ *   jabber_sm_outbound_raw().
  */
 
 #include "xmpp2_internal.h"
 
 #include <glib.h>
+#include <string.h>
 #include "namespaces.h"
 #include "xmlnode.h"
 #include "jabber.h"
@@ -430,6 +435,32 @@ jabber_sm_outbound(JabberStream *js, xmlnode *packet)
 		sm_send_request(js, s);
 	else
 		sm_arm_idle_request(js, s);
+}
+
+gboolean
+jabber_sm_outbound_raw(JabberStream *js, const char *buf, int len)
+{
+	char *wrapped;
+	xmlnode *root, *c;
+
+	if (js->sm_state == SM_DISABLED)
+		return TRUE;
+	if (len < 0)
+		len = strlen(buf);
+	/* A wrapper element lets several top-level stanzas parse at once. */
+	wrapped = g_strdup_printf("<x2raw>%.*s</x2raw>", len, buf);
+	root = xmlnode_from_str(wrapped, -1);
+	g_free(wrapped);
+	if (root == NULL) {
+		purple_debug_error(SM_DBG, "raw XML refused: not complete, "
+		                   "well-formed elements\n");
+		return FALSE;
+	}
+	for (c = root->child; c != NULL; c = c->next)
+		if (c->type == XMLNODE_TYPE_TAG)
+			jabber_sm_outbound(js, c);
+	xmlnode_free(root);
+	return TRUE;
 }
 
 /* Counts inbound stanzas (our h). */
