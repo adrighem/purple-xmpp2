@@ -39,7 +39,7 @@ M0 --> M11 packaging + CI (any time after M0)
 | Wave | Milestones in parallel | Shared files (conflict policy) |
 |---|---|---|
 | 1 | M0, then M1 (one owner, sequential) | everything |
-| 2 | M2, M3, M5, M6, M7, M8, M9, M11 | `ext/ext.c` registry table and `CMakeLists.txt` source list: one line each, append only, rebase trivially. `x2stream.h` and `namespaces.h` are pre-filled in M1 so no wave-2 milestone edits them |
+| 2 | M2, M3, M5, M6, M7, M8, M9, M11 | `ext/ext.c` registry table and `CMakeLists.txt` source list: one line each, append only, rebase trivially. `namespaces.h` is pre-filled in M1; `x2stream.h` has no per-module fields (modules keep their state in the `priv[]` slot of their registry position via `x2_ext_get_priv()`), so no wave-2 milestone edits either |
 | 3 | M4 (after M3), M10 (after M3 and M9, and after wave 2 has merged) | M10 owns `jabber.c`/`jabber.h` exclusively |
 
 Wave-2 ownership:
@@ -82,7 +82,8 @@ Scope (ARCHITECTURE 3, 5, 6):
   name.
 - Rename the inherited debug category `jabber` to `xmpp2` mechanically
   (all files, one commit, no other change in it).
-- `ext/ext.c/.h` registry, `ext/x2stream.h` with one pointer per v1 module,
+- `ext/ext.c/.h` registry, `ext/x2stream.h` with shared state and one
+  `priv[]` slot per module (M1.1),
   `ext/msgctx.c` (X2Msg build and deliver), `message.c` delivery takes the
   context, `dir=OUT` path writes `SEND | REMOTE_SEND`.
 - Login chain: own bare-JID `disco#info`, `pre_presence` and
@@ -115,9 +116,23 @@ Acceptance:
   with `X` equal to the stanza `id` (peer prints raw stanza).
 - Libpurple debug log shows the order: roster result, `pre_presence`, initial
   presence, `session_ready`.
-- Dedup unit tests: a message with only a foreign `@id` gets no key;
-  `I:` keys exist only for `dir=OUT` with our generated ids.
+- Dedup unit tests: a message without origin-id or trusted stanza-id gets
+  no key; the stanza `@id` is never a key (M1.1).
 - `make`-time warning count does not increase versus M0.
+
+## M1.1: review hardening (before wave 2)
+
+Scope (ARCHITECTURE 1.2, 5, 6, 7.3): `server_info` only for trusted disco
+sources (own domain, own server items, own bare JID; `account_info` folded
+into it); `priv[]` slots replace per-module pointers in `x2stream.h`; no
+`I:` dedup keys; `<forwarded><delay>` before the inner delay; `x2_msg_dup()`
+and `x2_msg_redeliver()` define `X2_DEFERRED` ownership; live messages get
+an archive, stanza-ids trusted only for archives that advertised sid/mam;
+MUC PM detection from the muc#user hint; `message.c` takes delays from the
+context only; SPDX headers on new files; `XMPP2_SANITIZE` CMake option.
+
+Acceptance: `ctest -L unit` green on a normal and on an `XMPP2_SANITIZE=ON`
+build, `test-msgctx` clean under valgrind.
 
 ## M2: carbons (XEP-0280)
 

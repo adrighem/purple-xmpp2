@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /**
  * @file sid.c XEP-0359 unique and stable stanza ids (pure logic)
  */

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /**
  * @file dedup.c Bounded LRU set of message keys (pure logic)
  */
@@ -79,7 +82,7 @@ x2_dedup_add(X2Dedup *d, const char *key)
 
 char *
 x2_dedup_make_key(const char *trusted_stanza_id, gboolean outgoing,
-                  const char *peer, const char *origin_id, const char *id_attr)
+                  const char *peer, const char *origin_id)
 {
 	const char *dir = outgoing ? "out" : "in";
 
@@ -89,7 +92,5 @@ x2_dedup_make_key(const char *trusted_stanza_id, gboolean outgoing,
 		return NULL;
 	if (origin_id != NULL && *origin_id != '\0')
 		return g_strconcat("O:", dir, ":", peer, ":", origin_id, NULL);
-	if (id_attr != NULL && *id_attr != '\0')
-		return g_strconcat("I:", dir, ":", peer, ":", id_attr, NULL);
 	return NULL;
 }

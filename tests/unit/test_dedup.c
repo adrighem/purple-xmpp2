@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /* Unit tests of core/dedup.c: LRU set and key building. */
 #include <glib.h>
 
@@ -85,9 +88,9 @@ test_free_null(void)
 
 static void
 check_key(const char *sid, gboolean out, const char *peer, const char *oid,
-          const char *id, const char *expected)
+          const char *expected)
 {
-	char *key = x2_dedup_make_key(sid, out, peer, oid, id);
+	char *key = x2_dedup_make_key(sid, out, peer, oid);
 
 	g_assert_cmpstr(key, ==, expected);
 	g_free(key);
@@ -96,19 +99,19 @@ check_key(const char *sid, gboolean out, const char *peer, const char *oid,
 static void
 test_make_key(void)
 {
-	/* trusted stanza-id wins over everything */
-	check_key("sid1", FALSE, "bob@x", "o1", "i1", "S:sid1");
-	/* origin-id before the id attribute, direction and peer are part of it */
-	check_key(NULL, FALSE, "bob@x", "o1", "i1", "O:in:bob@x:o1");
-	check_key(NULL, TRUE, "bob@x", "o1", "i1", "O:out:bob@x:o1");
-	check_key("", TRUE, "bob@x", "", "i1", "I:out:bob@x:i1");
-	check_key(NULL, FALSE, "room@c/nick", NULL, "i1", "I:in:room@c/nick:i1");
-	/* nothing usable */
-	check_key(NULL, FALSE, "bob@x", NULL, NULL, NULL);
-	check_key(NULL, FALSE, "bob@x", "", "", NULL);
-	check_key(NULL, FALSE, NULL, "o1", "i1", NULL);
+	/* trusted stanza-id wins over the origin-id */
+	check_key("sid1", FALSE, "bob@x", "o1", "S:sid1");
+	/* direction and peer are part of an origin-id key */
+	check_key(NULL, FALSE, "bob@x", "o1", "O:in:bob@x:o1");
+	check_key(NULL, TRUE, "bob@x", "o1", "O:out:bob@x:o1");
+	check_key("", TRUE, "room@c/nick", "o1", "O:out:room@c/nick:o1");
+	/* nothing usable: the stanza id attribute is never a key */
+	check_key(NULL, FALSE, "bob@x", NULL, NULL);
+	check_key("", TRUE, "bob@x", "", NULL);
+	check_key(NULL, FALSE, NULL, "o1", NULL);
+	check_key(NULL, FALSE, "", "o1", NULL);
 	/* a stanza-id needs no peer */
-	check_key("sid1", FALSE, NULL, NULL, NULL, "S:sid1");
+	check_key("sid1", FALSE, NULL, NULL, "S:sid1");
 }
 
 int

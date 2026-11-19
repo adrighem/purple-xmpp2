@@ -271,8 +271,9 @@ static void jabber_disco_info_cb(JabberStream *js, const char *from,
 		if(jbr)
 			jbr->capabilities = capabilities;
 
-		/* The server's components (MUC, upload, ...) have domain JIDs */
-		if (from && !strchr(from, '@'))
+		/* Only our own server's components (MUC, upload, ...): a foreign
+		 * domain advertising upload or carbons must not be used */
+		if (x2_ext_is_server_item(js, from))
 			x2_ext_server_info(js, from, query);
 
 		if (jdicd && jdicd->callback)
@@ -340,7 +341,7 @@ jabber_disco_account_info_cb(JabberStream *js, const char *from,
 	/* The result of a request to our own bare JID may come without "from" */
 	if (type == JABBER_IQ_RESULT && query &&
 	    (from == NULL || purple_strequal(from, bare)))
-		x2_ext_account_info(js, query);
+		x2_ext_server_info(js, bare, query);
 	else
 		purple_debug_info("xmpp2", "no usable account disco#info\n");
 
@@ -521,6 +522,9 @@ jabber_disco_server_items_result_cb(JabberStream *js, const char *from,
 		 * so we won't query them */
 		if(xmlnode_get_attrib(child, "node") != NULL)
 			continue;
+
+		/* trusted source for x2_ext_server_info(), see ext.h */
+		x2_ext_server_item_add(js, jid);
 
 		iq = jabber_iq_new_query(js, JABBER_IQ_GET, NS_DISCO_INFO);
 		xmlnode_set_attrib(iq->node, "to", jid);

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /**
  * @file x2types.h Forward declarations shared by the upstream files and ext/
  *

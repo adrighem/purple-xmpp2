@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /**
  * @file dedup.h Bounded LRU set of message keys (pure logic)
  *
@@ -35,18 +38,18 @@ gboolean x2_dedup_add(X2Dedup *d, const char *key);
  * Builds the dedup key of a message (ARCHITECTURE 7.3).
  *
  * Preference order: a trusted stanza-id ("S:<id>"), else the origin-id
- * ("O:<dir>:<peer>:<id>"), else the stanza @@id attribute
- * ("I:<dir>:<peer>:<id>").
+ * ("O:<dir>:<peer>:<id>").  The stanza @@id attribute is never used: a
+ * foreign id is not unique enough to key on, and every message we send
+ * carries an origin-id, so "O:" already covers our own sends.
  *
  * @param trusted_stanza_id  Stanza-id already verified against the archive, or NULL.
  * @param outgoing           TRUE if we sent the message from any of our devices.
  * @param peer               Conversation key (bare JID, or full JID for MUC PMs).
  * @param origin_id          XEP-0359 origin-id, or NULL.
- * @param id_attr            The id attribute of the stanza, or NULL.
- * @return A newly allocated key, or NULL if the message has no usable id.
+ * @return A newly allocated key, or NULL if the message has no usable id
+ *         (it is then never treated as a duplicate).
  */
 char *x2_dedup_make_key(const char *trusted_stanza_id, gboolean outgoing,
-                        const char *peer, const char *origin_id,
-                        const char *id_attr);
+                        const char *peer, const char *origin_id);
 
 #endif /* XMPP2_CORE_DEDUP_H_ */

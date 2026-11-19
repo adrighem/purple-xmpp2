@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /**
  * @file ext.h Hook registry of the xmpp2 feature modules
  *
@@ -20,9 +23,13 @@
 #include "ext/msgctx.h"
 
 typedef enum {
-	X2_PASS,       /* not handled, continue with the next module */
-	X2_CONSUMED,   /* handled, stop, do not deliver */
-	X2_DEFERRED    /* queued by the module, which will redeliver later */
+	/* not handled, continue with the next module */
+	X2_PASS,
+	/* handled, stop, do not deliver */
+	X2_CONSUMED,
+	/* the module kept an x2_msg_dup() of the message and will hand it back
+	 * with x2_msg_redeliver(); the original is freed by the pipeline */
+	X2_DEFERRED
 } X2Verdict;
 
 /** What the outbound hooks may need to know about a message being sent. */
@@ -39,9 +46,14 @@ typedef struct {
 	void (*account_options)(GList **opts);     /* append PurpleAccountOption */
 	void (*stream_new)(JabberStream *js);
 	void (*stream_free)(JabberStream *js);
-	/* own bare JID disco#info result */
-	void (*account_info)(JabberStream *js, xmlnode *query);
-	/* disco#info of the server domain and of its components */
+	/*
+	 * disco#info result of a trusted source: our server domain, a JID
+	 * listed in our server's disco#items (upload, MUC, proxy components),
+	 * or our own bare JID (account features: MAM and carbons on Prosody).
+	 * Compare @a from with js->user to tell them apart.  Results of any
+	 * other entity (contacts, foreign services) never reach this hook.  May
+	 * run more than once for the same JID: keep it idempotent.
+	 */
 	void (*server_info)(JabberStream *js, const char *from, xmlnode *query);
 	void (*pre_presence)(JabberStream *js);    /* roster done, before initial presence */
 	void (*session_ready)(JabberStream *js);   /* PURPLE_CONNECTED */
@@ -56,12 +68,41 @@ void x2_ext_plugin_uninit(PurplePlugin *plugin);
 void x2_ext_account_options(GList **opts);
 void x2_ext_stream_new(JabberStream *js);
 void x2_ext_stream_free(JabberStream *js);
-void x2_ext_account_info(JabberStream *js, xmlnode *query);
+/* from must be a trusted source (see server_info above), else critical */
 void x2_ext_server_info(JabberStream *js, const char *from, xmlnode *query);
 void x2_ext_pre_presence(JabberStream *js);
 void x2_ext_session_ready(JabberStream *js);
-X2Verdict x2_ext_inbound(JabberStream *js, X2Msg *m);
 void x2_ext_outbound(JabberStream *js, xmlnode *message, X2Out *o);
 void x2_ext_chat_joined(JabberStream *js, JabberChat *chat);
+
+/**
+ * Runs the inbound hooks of the modules after m->stage (all of them for a
+ * new context) and records in m->stage the module that is running, so a
+ * module can x2_msg_dup() the context and later resume after itself.
+ */
+X2Verdict x2_ext_inbound(JabberStream *js, X2Msg *m);
+
+/** Remembers a JID from our own server's disco#items. */
+void x2_ext_server_item_add(JabberStream *js, const char *jid);
+
+/** TRUE for our server domain and the JIDs in its disco#items. */
+gboolean x2_ext_is_server_item(JabberStream *js, const char *jid);
+
+/**
+ * Marks an archive (a room JID after its disco#info) as stamping reliable
+ * XEP-0359 stanza-ids.  The own bare JID is marked by x2_ext_server_info()
+ * when the account advertises urn:xmpp:sid:0 or urn:xmpp:mam:2.
+ */
+void x2_ext_archive_trust(JabberStream *js, const char *archive);
+
+/** TRUE if stanza-ids with by=@a archive may be trusted (ARCHITECTURE 7.3). */
+gboolean x2_ext_archive_is_trusted(JabberStream *js, const char *archive);
+
+/**
+ * Per-stream private data of a module: the slot in JabberStream::x2->priv
+ * that belongs to @a ext (by its position in the registry).
+ */
+gpointer x2_ext_get_priv(JabberStream *js, const X2Ext *ext);
+void x2_ext_set_priv(JabberStream *js, const X2Ext *ext, gpointer priv);
 
 #endif /* XMPP2_EXT_EXT_H_ */

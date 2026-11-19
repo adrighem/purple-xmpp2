@@ -27,7 +27,7 @@ distinct. Checked against the 2.14.14 sources:
 | XEP-0115 caps node | `http://pidgin.im/` | `XMPP2_WEBSITE` | M1 (ver hash differs anyway; node should name the software) |
 | XEP-0092 software version | `libpurple` | `purple-xmpp2 <version>` | M1 |
 | GObject type names | `JingleSession`, `JingleContent`, `JingleRtp`, ... | none | Jingle dropped, see 3. `g_type_register_static` is process-global: a second registration of the same name fails and the type getter returns 0 |
-| Signals, IPC (`jabber-receiving-xmlnode`, ...) | registered on the plugin instance | same names on our instance | no clash: purple signals are keyed by instance. Third-party plugins (carbons, lurch) look up `prpl-jabber` and will not attach to us, which is what we want |
+| Signals, IPC (`jabber-receiving-xmlnode`, ...) | registered on the plugin instance | same names on our instance | no clash: purple signals are keyed by instance. Third-party plugins (carbons, lurch) look up `prpl-jabber` and will not attach to us, which is what we want. Semantics differ, see 1.2 |
 | `uri-handler` for `xmpp:` | both connect | first connected account wins | acceptable |
 | gettext domain | `pidgin` | `purple-xmpp2`, falling back to `pidgin` | see 2 |
 | Log directory | `logs/jabber/<user>/` (from `list_icon`) | the same, by design | see 10 and 11 |
@@ -65,6 +65,22 @@ module would silently bind to the upstream implementation with a different
 harmless, may stay. We deliberately do not rename `jabber_*` in the sources:
 that would touch every line of 25k lines of inherited code and destroy the
 ability to diff and cherry-pick upstream security fixes.
+
+### 1.2 Signals for third-party plugin authors
+
+The inherited signals keep their names and signatures, but
+`jabber-receiving-message` (`type, id, from, to, message`) now fires from
+`jabber_message_deliver()`, after the inbound pipeline (6):
+
+- `message` is the message to show: for a carbon or a MAM result that is the
+  unwrapped inner `<message/>`, not the stanza on the wire. `from`/`to` are
+  its attributes. Plugins that need the wrapper use `jabber-receiving-xmlnode`,
+  which still sees every raw stanza.
+- It never fires for stanzas a module consumed (`X2_CONSUMED`: forged
+  carbons and MAM results, duplicates, receipt/marker-only control
+  messages). A deferred message (`X2_DEFERRED`, e.g. queued during a MAM
+  catch-up) fires once, when it is finally delivered.
+- Returning TRUE still suppresses the delivery.
 
 ## 2. Build and compat headers
 
@@ -126,7 +142,7 @@ src/
   (other upstream files: include swap only)
   ext/                  NEW  feature modules: libpurple glue, one file per XEP
     ext.c ext.h         hook registry and inbound/outbound pipeline driver
-    x2stream.h          per-stream state, one pointer per module
+    x2stream.h          per-stream shared state plus one opaque slot per module
     msgctx.c msgctx.h   X2Msg: build, classify, deliver to message.c
     carbons.c           XEP-0280
     mam.c               XEP-0313 sync state machines (account and rooms)
@@ -182,8 +198,9 @@ typedef struct {
     void (*account_options)(GList **opts);     /* append PurpleAccountOption */
     void (*stream_new)(JabberStream *js);
     void (*stream_free)(JabberStream *js);
-    void (*account_info)(JabberStream *js, xmlnode *query);   /* own bare JID disco#info */
-    void (*server_info)(JabberStream *js, const char *from, xmlnode *query); /* domain and items */
+    /* disco#info of a trusted source: our domain, our server's disco#items,
+     * our own bare JID (compare from with js->user) */
+    void (*server_info)(JabberStream *js, const char *from, xmlnode *query);
     void (*pre_presence)(JabberStream *js);    /* roster done, before initial presence */
     void (*session_ready)(JabberStream *js);   /* PURPLE_CONNECTED */
     X2Verdict (*inbound)(JabberStream *js, X2Msg *m);
@@ -199,6 +216,24 @@ in `disco.c` (server info, then a new own bare-JID `disco#info`, then roster),
 `jabber_message_parse`, `jabber_message_send`, and the self-presence branch
 in `chat.c`. `JabberStream` gains one field: `X2Stream *x2`.
 
+`server_info` only ever sees disco#info results of entities we trust: our
+server domain, JIDs listed in our own server's `disco#items` (recorded per
+stream by `x2_ext_server_item_add()` in `jabber_disco_server_items_result_cb`),
+and our own bare JID. Results for contacts' caps, user service browsing and
+remote MUC services never reach it, so a foreign domain advertising upload
+or carbons is never used. It may run more than once for the same JID; hooks
+must be idempotent. `x2_ext_server_info()` itself marks the own bare JID as
+a trusted archive when it advertises `urn:xmpp:sid:0` or `urn:xmpp:mam:2`
+(7.3).
+
+Per-stream module state: `X2Stream` has only shared fields (dedup set,
+server items, trusted archives) and `gpointer priv[X2_EXT_MAX]`, one slot
+per registry position. A module calls `x2_ext_get_priv(js, &x2_ext_<me>)` /
+`x2_ext_set_priv()`, allocates in `stream_new` and frees and clears in
+`stream_free` (a slot left set is reported as a leak). Adding a module
+therefore touches only its own files plus the registry table and the
+CMake source list.
+
 Login sequence after M1: bind, SM enable, session, server `disco#items`
 and `disco#info`, own bare-JID `disco#info` (MAM support lives there on
 Prosody), roster, `pre_presence` (MAM starts buffering), initial presence
@@ -213,18 +248,35 @@ Every `<message>` goes through one path. The context object:
 
 ```c
 typedef struct {
-    xmlnode   *outer;        /* stanza as received */
+    xmlnode   *outer;        /* stanza as received (borrowed from the parser) */
     xmlnode   *msg;          /* the message to show (inner for carbons/MAM) */
+    gboolean   owns_outer;   /* TRUE for x2_msg_dup() copies */
+    int        stage;        /* registry index of the module that saw it last */
     X2Source   src;          /* LIVE, CARBON, MAM */
     X2Dir      dir;          /* IN, OUT (sent by us from any device) */
-    time_t     ts;           /* delay stamp or now */
+    time_t     ts;           /* <forwarded><delay>, else inner delay, else now */
     gboolean   delayed;
-    char      *archive;      /* own bare JID or room JID */
+    char      *archive;      /* own bare JID, or room JID for groupchat (also LIVE) */
     char      *stanza_id;    /* trusted only: by == archive and archive supports sid/mam */
     char      *key;          /* dedup key, see 7.3 */
     char      *peer;         /* conversation key: bare JID, or full for MUC PM */
 } X2Msg;
 ```
+
+`peer` is the full JID for a private message from a room occupant: the room
+is joined, or the message carries `<x xmlns='http://jabber.org/protocol/muc#user'/>`
+(XEP-0045 PMs, e.g. fetched from MAM before the join). `ts`: carbons and MAM
+put the send time on `<forwarded><delay/>`, which wins over a delay on the
+inner message. `message.c` takes `sent`/`delayed` from the context only.
+
+Ownership and `X2_DEFERRED`: the context built for a received stanza borrows
+it from the parser and is freed when the pipeline returns, whatever the
+verdict. A module that keeps a message takes `x2_msg_dup(m)` (deep copy of
+`outer` with `xmlnode_copy()`, `msg` relocated into the copy, owns both) and
+returns `X2_DEFERRED`. Later it hands the copy to `x2_msg_redeliver(js, d)`,
+which runs the inbound hooks after the deferring module (`stage`), delivers
+if they all pass, and frees the copy in every case (a later module may
+defer it again by taking its own dup).
 
 Order of the inbound chain (registry order matters and is fixed):
 
@@ -244,7 +296,8 @@ Order of the inbound chain (registry order matters and is fixed):
    from comparing inner `from` with our bare JID (or our nick/occupant-id in
    MUC).
 3. `mam` (dedup and ordering): drop if `key` already seen. If the archive is
-   in `SYNCING` and `src` is LIVE or CARBON, queue it (`X2_DEFERRED`). The
+   in `SYNCING` and `src` is LIVE or CARBON, queue an `x2_msg_dup()` and
+   return `X2_DEFERRED` (ownership: see above). The
    queue is flushed to the UI (with dedup) on `LIVE`, on watchdog expiry and
    on stream teardown: a duplicate beats a lost message.
 4. `receipts`, `markers`, `correction`: consume pure control messages
@@ -348,12 +401,18 @@ debounce (see 9); exactly once otherwise.
 
 - `S:<stanza-id>` when the message has a trusted stanza-id (XEP-0359:
   `by` equals the archive JID and the archive advertised `urn:xmpp:sid:0` or
-  `urn:xmpp:mam:2`; otherwise stanza-ids are spoofable and ignored).
-- Otherwise `O:<dir>:<peer>:<origin-id>`.
-- Otherwise, only for `dir=OUT` sent by this client (ids we generated):
-  `I:out:<peer>:<@id>`. Foreign `@id` values are not unique enough to key on.
-- Otherwise no key: the message is never treated as a duplicate.
-- Inner keys (`O:`/`I:`) are recorded only for messages delivered without a
+  `urn:xmpp:mam:2`; otherwise stanza-ids are spoofable and ignored). Every
+  message has an archive, live ones included: our own bare JID, or the room
+  bare JID for `type='groupchat'`. Trust is a per-stream flag per archive:
+  the own bare JID gets it from the account `disco#info`
+  (`x2_ext_server_info()`), a room from its `disco#info` before the join
+  (M4, `x2_ext_archive_trust()`). Without it a remote sender could forge
+  `<stanza-id by='me'/>`; a server that advertises sid strips such forgeries.
+- Otherwise `O:<dir>:<peer>:<origin-id>`. Every message we send carries an
+  origin-id (6), so this covers our own sends.
+- Otherwise no key: the message is never treated as a duplicate. The stanza
+  `@id` is never used: it cannot tell our ids from foreign ones.
+- Inner keys (`O:`) are recorded only for messages delivered without a
   trusted stanza-id, and a MAM result consults them in addition to its
   `S:` key. This recognises in a later catch-up a message first seen live
   without a stanza-id (our own sends; Prosody does not stamp sent carbons),
@@ -400,7 +459,8 @@ Advertise `urn:xmpp:message-correct:0`.
 
 ### 7.7 HTTP File Upload (XEP-0363)
 
-Discovery: in `server_info`, a disco item advertising
+Discovery: in `server_info`, an item of our own server's `disco#items`
+(foreign upload services are never offered) advertising
 `urn:xmpp:http:upload:0`, with `max-file-size` from its x-data. `send_file`
 and `chat_send_file` create a `PurpleXfer` (type SEND) with our own ops:
 on init, check size, request a slot (`<request filename size
@@ -465,7 +525,12 @@ MAM, not SM, is the primary offline-messaging mechanism.
 - Dedup keys: never derived from foreign `@id`; inner keys only from
   messages without a trusted stanza-id (7.3).
 - stanza-id: trusted only when `by` matches the archive and the archive
-  advertised support; otherwise ignored for dedup and cursors.
+  advertised support (per-stream flag, set from our account or room
+  disco#info); otherwise ignored for dedup and cursors. Applies to live
+  messages too.
+- Service discovery: `server_info` only for our domain, our server's
+  `disco#items` and our own bare JID; never for contacts or foreign
+  domains (5).
 - Corrections: sender must match the original sender (7.6).
 - Receipts only to roster contacts with subscription, never for MAM/carbons.
 - Upload: only the three allowed PUT headers, strip CR/LF from all header
@@ -485,7 +550,7 @@ deleted on the `account-removed` signal.
 [archive user@example.org]
 cursor=1a2b...           ; last delivered stanza-id
 cursor_ts=1763540000     ; its timestamp, fallback for item-not-found
-ring=O:out:bob@x:uuid1;I:in:carol@x:abc;...   ; last 256 non-S keys
+ring=O:out:bob@x:uuid1;O:in:carol@x:abc;...   ; last 256 non-S keys
 [archive room@conference.example.org]
 cursor=...
 cursor_ts=...
@@ -508,7 +573,8 @@ temp path. Account-level user choices (`mam_initial_days`,
 `purple_plugins_probe()`, before `purple_accounts_init()` (`core.c` 149 vs
 163), so the check is deferred with `purple_timeout_add(0)`.
 
-- Offer once, only when `purple_core_get_ui()` is `"pidgin"` (Finch,
+- Offer once, only when `purple_core_get_ui()` is `"gtk-gaim"` (Pidgin's
+  historical UI id, `pidgin/pidgin.h` 44; Finch,
   the harness and other UIs never get an unsolicited dialog): if some
   `prpl-jabber` account has no `prpl-xmpp2` twin (same username) and the pref
   `/plugins/prpl/xmpp2/migration_offered` is false,
@@ -558,6 +624,15 @@ of `tests/` belongs to QA.
   only; no `purple_core_init()`. Covers forged carbons, stanza-id `by`
   checks, `<fin>` parsing, dedup LRU eviction, store round-trip and
   corruption handling, PUT request building and header sanitising.
+  `test_msgctx.c` also runs the real `ext/ext.c` and `ext/msgctx.c` against
+  a test module table (`X2_EXT_TEST_TABLE`) with stubbed delivery: stanza-id
+  trust, delay precedence, `X2_DEFERRED` dup/redeliver ownership, priv
+  slots. Criticals are fatal in unit tests; expected ones are announced with
+  `g_test_expect_message()`.
+- Memory checks: `cmake -DXMPP2_SANITIZE=ON` builds everything with ASan and
+  UBSan; run `ctest -L unit` there (the sanitized plugin does not load into
+  a normal Pidgin, so skip `smoke`). `valgrind --leak-check=full` on the
+  `test-*` binaries works on a normal build too.
 - Integration (`tests/integration/`): the existing `xmpp2-harness`
   (nullclient-style, line script) against Prosody 13 in podman, with
   `peer.py` (slixmpp) as the other party or as a second device of the same

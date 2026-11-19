@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /**
  * @file forward.h XEP-0297 stanza forwarding, XEP-0203 delayed delivery
  *
@@ -41,5 +44,35 @@ xmlnode *x2_forward_get_forwarded(const xmlnode *container);
  * @return TRUE if a valid stamp was found.
  */
 gboolean x2_delay_parse(const xmlnode *stanza, time_t *ts, char **from);
+
+/**
+ * Parses the delay stamp that applies to a (possibly forwarded) message.
+ *
+ * Carbons and MAM results put the original send time on the enclosing
+ * <forwarded><delay/></forwarded>, not on the wrapped message.  If the
+ * parent of @a message is a <forwarded xmlns='urn:xmpp:forward:0'/> with a
+ * valid delay, that stamp wins; otherwise the message's own delay is used.
+ *
+ * @param message  The message to show (outer, or inner of a <forwarded/>).
+ * @param ts       Receives the time as seconds since the epoch.
+ * @return TRUE if a valid stamp was found.
+ */
+gboolean x2_forward_delay_parse(const xmlnode *message, time_t *ts);
+
+/**
+ * Deep-copies a stanza and locates the copy of one of its descendants.
+ *
+ * Used to keep a forwarded message beyond the lifetime of the parsed
+ * stanza: the copy of @a outer is returned and @a *node_copy points to the
+ * element at the same position as @a node.
+ *
+ * @param outer      Root of the tree to copy.
+ * @param node       @a outer itself or an element inside it.
+ * @param node_copy  Receives the relocated @a node, owned by the returned tree.
+ * @return The copy (free with xmlnode_free()), or NULL with a critical
+ *         warning if @a node is not inside @a outer.
+ */
+xmlnode *x2_forward_copy(const xmlnode *outer, const xmlnode *node,
+                         xmlnode **node_copy);
 
 #endif /* XMPP2_CORE_FORWARD_H_ */

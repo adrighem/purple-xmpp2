@@ -750,18 +750,10 @@ void jabber_message_deliver(JabberStream *js, X2Msg *ctx)
 				jm->eventitems = g_list_append(jm->eventitems, items);
 		} else if(purple_strequal(child->name, "attention") && purple_strequal(xmlns, NS_ATTENTION)) {
 			jm->hasBuzz = TRUE;
-		} else if(purple_strequal(child->name, "delay") && purple_strequal(xmlns, NS_DELAYED_DELIVERY)) {
-			const char *timestamp = xmlnode_get_attrib(child, "stamp");
-			jm->delayed = TRUE;
-			if(timestamp)
-				jm->sent = purple_str_to_time(timestamp, TRUE, NULL, NULL, NULL);
 		} else if(purple_strequal(child->name, "x")) {
-			if(purple_strequal(xmlns, NS_DELAYED_DELIVERY_LEGACY)) {
-				const char *timestamp = xmlnode_get_attrib(child, "stamp");
-				jm->delayed = TRUE;
-				if(timestamp)
-					jm->sent = purple_str_to_time(timestamp, TRUE, NULL, NULL, NULL);
-			} else if(purple_strequal(xmlns, "jabber:x:conference") &&
+			/* Delays (XEP-0203, jabber:x:delay) are parsed once into the
+			 * context: jm->sent and jm->delayed come from ctx only. */
+			if(purple_strequal(xmlns, "jabber:x:conference") &&
 					jm->type != JABBER_MESSAGE_GROUPCHAT_INVITE &&
 					jm->type != JABBER_MESSAGE_ERROR) {
 				const char *jid = xmlnode_get_attrib(child, "jid");

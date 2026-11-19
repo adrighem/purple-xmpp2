@@ -16,6 +16,15 @@ find_package(PkgConfig REQUIRED)
 
 option(XMPP2_WERROR "Treat compiler warnings as errors" OFF)
 option(XMPP2_IDN "Use libidn for stringprep (recommended)" ON)
+option(XMPP2_SANITIZE
+    "Build with AddressSanitizer and UBSan (for ctest -L unit; the plugin then only loads into a sanitized host)"
+    OFF)
+
+if(XMPP2_SANITIZE)
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
+                        -fno-sanitize-recover=undefined)
+    add_link_options(-fsanitize=address,undefined)
+endif()
 
 pkg_check_modules(PURPLE REQUIRED IMPORTED_TARGET purple>=2.14)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0 gobject-2.0 gmodule-2.0)

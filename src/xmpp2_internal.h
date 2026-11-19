@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /**
  * @file xmpp2_internal.h Local replacement for libpurple's internal.h
  *

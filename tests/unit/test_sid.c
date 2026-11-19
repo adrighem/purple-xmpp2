@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (C) 2026 purple-xmpp2 contributors
+ */
 /* Unit tests of core/sid.c: origin-id, trusted stanza-id. */
 #include <string.h>
 #include <glib.h>
