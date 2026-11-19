@@ -149,6 +149,7 @@ src/
     statefile.c         persistence glue: path, debounce, account-removed
     receipts.c          XEP-0184
     markers.c           XEP-0333
+    peerutil.c          caps policy and notice line shared by receipts, markers
     correction.c        XEP-0308
     upload.c            XEP-0363 (PurpleXfer glue)
     migrate.c           clone prpl-jabber accounts
@@ -470,11 +471,17 @@ carbons after the last received stanza-id).
 
 ### 7.4 Delivery receipts (XEP-0184)
 
-Outgoing: `<request/>` on 1:1 messages with an id. Incoming request: reply
+Implemented in `ext/receipts.c` (`core/receipt_parse.c`). Outgoing:
+`<request/>` on 1:1 messages with a body, unless the recipient resource is
+known from caps and lacks `urn:xmpp:receipts`, or is a room occupant
+(unknown caps count as supported); the (bare JID, id) pair is remembered in a
+256 entry set. Incoming request: reply
 `<received id=.../>` to the full JID only when `src=LIVE`, `type!='groupchat'`
 and the sender is in the roster with presence subscription (no presence
 leak to strangers; same as Gajim). Incoming `<received/>`: emit the purple
-signal `xmpp2-receipt` (account, peer, id). Pidgin 2 cannot decorate an
+signal `xmpp2-receipt` (account, bare peer, id), only for a (peer, id) we
+asked for and only when `x2_msg_is_live_incoming()`. Pure receipts are
+consumed whatever their source. Pidgin 2 cannot decorate an
 already written line, so v1 has no visual ticks; an account option
 "Show delivery and read notices" (default off) writes a short
 `PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_NO_LOG` line. A GTK companion plugin
@@ -482,13 +489,20 @@ can render ticks from the signals later.
 
 ### 7.5 Chat markers (XEP-0333)
 
-Outgoing messages get `<markable/>`. Sending `displayed`: connect to
+Implemented in `ext/markers.c`. Outgoing messages get `<markable/>` under the
+same caps rule as receipts. Incoming markable messages (live and MAM, not
+carbons: the other device marks those) record the newest per contact (by
+`ts`); a `displayed` is sent to the bare JID at most once per remembered id.
+Sending `displayed`: connect to
 `conversation-updated` with `PURPLE_CONV_UPDATE_UNSEEN`; Pidgin sets the
 conversation data `unseen-count` to 0 when the user focuses the window
 (`pidgin/gtkconv.c` 7860, 8491). At that moment send one `<displayed id>` for
 the newest markable incoming message of that 1:1 conversation (including
 ones fetched by MAM). 1:1 only in v1. Incoming markers: signal `xmpp2-marker`
-plus the same optional notice. Read-state sync from our other devices
+(account, bare peer, id, marker name) plus the same optional notice, under
+the same "asked for" rule as receipts. Known limit: a message read in an
+already focused window never resets the unseen count, so it is not marked
+until the next reset. Read-state sync from our other devices
 (sent `displayed` carbons, XEP-0490) is later.
 
 ### 7.6 Message correction (XEP-0308)

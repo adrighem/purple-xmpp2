@@ -46,7 +46,7 @@ set_tests_properties(integration-selftest PROPERTIES
 
 # Feature integration tests: one test_<name>.sh per entry.
 foreach(feature_test carbons carbons_off mam mam_bulk mam_recovery sm upload
-        upload_fallback)
+        upload_fallback receipts markers)
     add_test(NAME integration-${feature_test}
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh
             ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_${feature_test}.sh)
@@ -54,3 +54,6 @@ foreach(feature_test carbons carbons_off mam mam_bulk mam_recovery sm upload
         LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
         ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")
 endforeach()
+# Receipts and markers tests run several harness sessions with settle delays.
+set_tests_properties(integration-receipts integration-markers
+    PROPERTIES TIMEOUT 400)
