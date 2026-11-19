@@ -65,6 +65,7 @@ typedef struct {
 	gboolean capped;           /* page cap reached: history was skipped */
 	char *skip_id;             /* old cursor, skipped after the retry */
 	time_t page_ts;            /* ts of the newest result of the page */
+	guint page_results;        /* results of a last-page query so far */
 	GHashTable *gap_noticed;   /* conversations told "older history skipped" */
 	gboolean frozen;           /* catch-up incomplete: live messages do
 	                            * not move the cursor (next login refetches) */
@@ -138,6 +139,11 @@ void x2_mam_sync_query(X2MamArchive *a, X2MamQueryKind kind,
 /**
  * Ends the catch-up: LIVE, then the queue is delivered in arrival order.
  * @param complete  FALSE after an error, the watchdog or teardown.
+/**
+ * Results a page of a query of this @a kind may hold: the RSM max we asked
+ * for.  More than that cannot come from an honest archive.
+ */
+guint x2_mam_page_limit(const X2MamArchive *a, X2MamQueryKind kind);
  * @param notice    Optional system line: for each conversation in the queue
  *                  (account archive), or once into the room.
  */

@@ -321,7 +321,7 @@ test_live_stanza_id_trust(Fixture *f, gconstpointer data)
 	xmlnode_free(q);
 	m = x2_msg_new(f->js, p);
 	g_assert_cmpstr(m->stanza_id, ==, "s1");
-	g_assert_cmpstr(m->key, ==, "S:s1");
+	g_assert_cmpstr(m->key, ==, "S:" ME ":s1");
 	x2_msg_free(m);
 	xmlnode_free(p);
 

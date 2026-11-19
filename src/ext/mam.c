@@ -45,7 +45,7 @@ static char *
 inner_key(const X2Msg *m)
 {
 	char *origin = x2_sid_origin_id(m->msg);
-	char *key = x2_dedup_make_key(NULL, m->dir == X2_DIR_OUT, m->peer,
+	char *key = x2_dedup_make_key(NULL, NULL, m->dir == X2_DIR_OUT, m->peer,
 	                              origin);
 
 	g_free(origin);
@@ -145,6 +145,19 @@ x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
 	gboolean dup;
 
 	x2_mam_sync_kick(a);
+	/* The newest page is buffered until its <fin/>: an archive that sends
+	 * more than the max we asked for is forged or broken, and must neither
+	 * grow the buffer nor keep the watchdog from firing. */
+	if (a->kind == X2_MAMQ_LAST) {
+		if (a->page_results >= x2_mam_page_limit(a, a->kind)) {
+			purple_debug_warning(X2_MAM_DEBUG, "archive result %s dropped: "
+			                     "more results than the page size %u "
+			                     "(forged?)\n", id,
+			                     x2_mam_page_limit(a, a->kind));
+			return X2_CONSUMED;
+		}
+		a->page_results++;
+	}
 
 	/* (a room result was forced to groupchat by its check) */
 	if (!a->room && (purple_strequal(type, "groupchat") ||
@@ -165,7 +178,7 @@ x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
 	g_free(m->stanza_id);
 	m->stanza_id = g_strdup(id);
 	g_free(m->key);
-	m->key = x2_dedup_make_key(id, dir == X2_DIR_OUT, m->peer, NULL);
+	m->key = x2_dedup_make_key(id, a->jid, dir == X2_DIR_OUT, m->peer, NULL);
 	m->delayed = TRUE;
 	a->page_ts = m->ts;
 
@@ -313,7 +326,7 @@ mam_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 	 * (full JID for a private message to a room occupant) */
 	peer = x2_msg_peer_of(js, to, xmlnode_get_attrib(message, "type"),
 	                      message);
-	key = x2_dedup_make_key(NULL, TRUE, peer, o->id);
+	key = x2_dedup_make_key(NULL, NULL, TRUE, peer, o->id);
 	if (key != NULL) {
 		x2_dedup_add(js->x2->dedup, key);
 		x2_store_ring_add(x2_mam_store(st), st->own, key);

@@ -86,8 +86,8 @@ update_from_message(JabberStream *js, X2Msg *m)
 
 	origin_id = x2_sid_origin_id(m->msg);
 	g_free(m->key);
-	m->key = x2_dedup_make_key(m->stanza_id, m->dir == X2_DIR_OUT, m->peer,
-	                           origin_id);
+	m->key = x2_dedup_make_key(m->stanza_id, m->archive,
+	                           m->dir == X2_DIR_OUT, m->peer, origin_id);
 	g_free(origin_id);
 
 	m->delayed = x2_forward_delay_parse(m->msg, &m->ts);

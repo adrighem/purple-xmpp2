@@ -26,7 +26,7 @@
 #include "namespaces.h"
 
 /* Seconds a join waits for the room's disco#info before going ahead */
-#define X2_MAM_ROOM_DISCO_SECS 10
+#define X2_MAM_ROOM_DISCO_SECS 5
 
 /* Default of the account option mam_muc_threshold_days */
 #define X2_MAM_ROOM_THRESHOLD_DAYS 2

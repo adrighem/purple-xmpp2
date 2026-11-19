@@ -456,7 +456,7 @@ a later self-presence update; it then queries the room archive (`to=room`):
 
 Implementation (M4): `ext/mam_muc.c`. `jabber_join_chat()` asks the
 `chat_joining` hook, which sends the room `disco#info` and holds the join
-(at most 10 s; on timeout the join goes ahead as a room without MAM); the
+(at most 5 s; on timeout the join goes ahead as a room without MAM); the
 answer is cached per stream (errors are not, a room created by the join is
 asked again next time), marks the room trusted for stanza-ids
 (`x2_ext_archive_trust()`) when it advertises `urn:xmpp:mam:2` or
@@ -472,7 +472,9 @@ cursor), page size 50, cap 10 pages, cursor in the state file section
 with the room's active queryid and an inner `from` of the room, are always
 delivered as groupchat into the room (`x2_mam_room_result_check()` forces
 the inner `type`), and are never treated as 1:1. Results of a last-page
-query are held until its `<fin/>` decides the notice. Live groupchat of a
+query are held until its `<fin/>` decides the notice, and are capped at the
+`max` asked for (`x2_mam_page_limit()`): results beyond it are dropped as
+forged, with a debug line, and do not restart the watchdog. Live groupchat of a
 MAM room is deduplicated (`S:` key of the room's stanza-id) and queued while
 the room syncs; rooms without MAM are not touched. Our own messages sent
 from another device come back from our nick and are marked sent by
@@ -499,7 +501,9 @@ debounce (see 9); exactly once otherwise.
 
 ### 7.3 Dedup keys
 
-- `S:<stanza-id>` when the message has a trusted stanza-id (XEP-0359:
+- `S:<archive bare JID>:<stanza-id>` when the message has a trusted
+  stanza-id (stanza-ids are unique within one archive only, so two archives
+  that issue the same id do not collide; XEP-0359:
   `by` equals the archive JID and the archive advertised `urn:xmpp:sid:0` or
   `urn:xmpp:mam:2`; otherwise stanza-ids are spoofable and ignored). Every
   message has an archive, live ones included: our own bare JID, or the room
@@ -521,7 +525,9 @@ debounce (see 9); exactly once otherwise.
 Two stores: an in-memory LRU of 4096 keys per stream (`core/dedup.c`), and a
 persisted ring of the last 256 non-`S:` keys per archive in the state file,
 which covers exactly the messages the cursor cannot (own sends and sent
-carbons after the last received stanza-id).
+carbons after the last received stanza-id). Ring entries are opaque strings:
+one written by an older version (`S:<id>` without the archive) never matches
+a new key and ages out of the ring.
 
 ### 7.4 Delivery receipts (XEP-0184)
 

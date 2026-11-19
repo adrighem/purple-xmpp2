@@ -100,6 +100,24 @@ pass "stale cursor inside the last page: no repeats, no notice (item 3)"
 
 test_hooks_enabled || { echo "SKIP: room watchdog needs -DXMPP2_TEST_HOOKS=ON"; exit 77; }
 
+# Last page with more results than max (XMPP2_TEST_HOOKS lowers the limit the
+# client enforces to 20, the server sends the 50 it was asked for): the
+# first 20 are kept, the other 30 are dropped as forged.
+run_peer carol --do "join $ROOM carol" \
+	--do "groupsendmany $ROOM 60 e" --do "sleep 2" \
+	--do "leave $ROOM" >/dev/null
+age_cursor
+XMPP2_TEST_MAM_PAGE_LIMIT=20 run_harness alice <<SCRIPT
+connect 30
+join $ROOM alice
+expect-debug cat=xmpp2-mam timeout=30 text=room archive $ROOM LIVE
+count-ev kind=recv conv=$ROOM n=20 text=e-
+count-debug cat=xmpp2-mam n=30 text=more results than the page size
+no-ev timeout=1 texteq=e-31
+disconnect
+SCRIPT
+pass "last page: results beyond max are dropped, not buffered"
+
 # Watchdog (XMPP2_TEST_HOOKS): the room query is never answered; after about 30 s the room
 # goes LIVE, the queued live message appears after one notice.
 peer_bg "$WORK/live.log" carol --stay 45 --do "join $ROOM carol" \
