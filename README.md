@@ -21,7 +21,7 @@ the server archive and shows it in the right conversation.
 | Feature | XEP | Status |
 | --- | --- | --- |
 | Everything the built-in XMPP plugin does | | Inherited (forked from Pidgin 2.14.14) |
-| Message archive catch-up | XEP-0313 | Implemented for 1:1 (M3): offline and other-device messages on login, original times, in order, once; rooms planned (M4) |
+| Message archive catch-up | XEP-0313 | Implemented for 1:1 (M3) and rooms (M4): offline and other-device messages on login, room history on join from the room archive instead of replayed legacy history; original times, in order, once |
 | Message carbons | XEP-0280 | Implemented (M2) |
 | Stream management | XEP-0198 | Batched acks; unacked messages reported on connection loss (resumption planned) |
 | HTTP file upload | XEP-0363 | Implemented (M7), falls back to SI file transfer |

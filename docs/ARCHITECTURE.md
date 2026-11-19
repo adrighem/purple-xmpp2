@@ -145,7 +145,9 @@ src/
     x2stream.h          per-stream shared state plus one opaque slot per module
     msgctx.c msgctx.h   X2Msg: build, classify, deliver to message.c
     carbons.c           XEP-0280
-    mam.c               XEP-0313 sync state machines (account and rooms)
+    mam.c               XEP-0313 hooks, result checks, dedup
+    mam_sync.c          XEP-0313 catch-up state machine, one per archive
+    mam_muc.c           XEP-0313 rooms: disco before join, history, join
     statefile.c         persistence glue: path, debounce, account-removed
     receipts.c          XEP-0184
     markers.c           XEP-0333
@@ -209,7 +211,9 @@ typedef struct {
     void (*session_ready)(JabberStream *js);   /* PURPLE_CONNECTED */
     X2Verdict (*inbound)(JabberStream *js, X2Msg *m);
     void (*outbound)(JabberStream *js, xmlnode *message, X2Out *o);
-    void (*chat_joined)(JabberStream *js, JabberChat *chat);
+    gboolean (*chat_joining)(JabberStream *js, JabberChat *chat); /* TRUE: hold the join */
+    void (*chat_join_presence)(JabberStream *js, JabberChat *chat, xmlnode *muc_x);
+    void (*chat_joined)(JabberStream *js, JabberChat *chat);  /* once per join */
     void (*stream_closing)(JabberStream *js);  /* top of jabber_close() */
     void (*carbons_settled)(JabberStream *js); /* carbons enable answered */
 } X2Ext;
@@ -427,9 +431,37 @@ a later self-presence update; it then queries the room archive (`to=room`):
   `after=<cursor>`, paged, at most 10 pages; beyond that jump to the last
   page and write one system line "older history skipped".
 - Otherwise: last page only (`<before/>`, `max=50`), plus the same system
-  line. This mirrors classic MUC history but without replaying it on every
-  rejoin.
+  line when the `<fin/>` says the page is not the whole archive
+  (`complete='false'`). This mirrors classic MUC history but without
+  replaying it on every rejoin. If a stale cursor is still inside that page,
+  the messages up to it were shown before: they are dropped and there is no
+  notice.
 - Room without MAM: unchanged upstream behaviour (legacy history).
+
+Implementation (M4): `ext/mam_muc.c`. `jabber_join_chat()` asks the
+`chat_joining` hook, which sends the room `disco#info` and holds the join
+(at most 10 s; on timeout the join goes ahead as a room without MAM); the
+answer is cached per stream (errors are not, a room created by the join is
+asked again next time), marks the room trusted for stanza-ids
+(`x2_ext_archive_trust()`) when it advertises `urn:xmpp:mam:2` or
+`urn:xmpp:sid:0`, and releases the join through `jabber_chat_send_join()`,
+whose `chat_join_presence` hook replaces any user `<history/>` with
+`maxchars='0' maxstanzas='0'` for a MAM room. `presence.c` resets
+`chat->joined` on an unavailable self-presence only when it is not a nick
+change (status 303), so `chat_joined` fires once per join. Each room has its
+own `X2MamArchive` (the same state machine as the account archive in
+`ext/mam_sync.c`: queue, watchdog, item-not-found retry, probe, frozen
+cursor), page size 50, cap 10 pages, cursor in the state file section
+`[archive <room>]`. Room results are accepted only from the room's bare JID
+with the room's active queryid and an inner `from` of the room, are always
+delivered as groupchat into the room (`x2_mam_room_result_check()` forces
+the inner `type`), and are never treated as 1:1. Results of a last-page
+query are held until its `<fin/>` decides the notice. Live groupchat of a
+MAM room is deduplicated (`S:` key of the room's stanza-id) and queued while
+the room syncs; rooms without MAM are not touched. Our own messages sent
+from another device come back from our nick and are marked sent by
+libpurple. MUC private messages are 1:1 messages of the account archive:
+the `muc#user` hint keeps the occupant full JID as the conversation.
 
 Ordering: Pidgin can only append to a conversation. While an archive is
 `SYNCING`, live and carbon messages for it are queued and flushed in arrival
