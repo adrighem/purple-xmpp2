@@ -38,7 +38,8 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   console path),
   `action TEXT` (run a prpl action by label), `answer N`/`no-request`
   (`purple_request_action()` has a recording UI: the script presses a
-  button), `expect-account PRPL USER enabled= connected= exists=` (any account
+  button), `remove-account` (delete the account as the Accounts dialog
+  does, then stop), `expect-account PRPL USER enabled= connected= exists=` (any account
   of the userdir) and `--libpref s:|i:|b:/path=V` (libpurple pref before the
   main loop). Conversation events (`EV`) come from every account of the
   userdir, and the buddy list has an empty UI so `blist.xml` is written.
@@ -99,6 +100,9 @@ Baseline with the built-in Pidgin jabber prpl, then the plugin under test:
 
 Runs Pidgin under Xvfb with an isolated config dir (and redirected `HOME`),
 checks the plugin is probed and loads, and that `prpl-xmpp2` registers.
+It fails on a GLib-CRITICAL from our code during startup (a signal
+connected before libpurple registers it, or a failed `g_return_*` check of
+an `x2_`/`jabber_` function).
 Exit 77 means skipped (plugin not built).
 
     tests/smoke/pidgin-load.sh [build/libxmpp2.so]

@@ -758,7 +758,10 @@ Chosen: one GKeyFile per account at
 never share a file). The directory is created with
 `purple_build_dir(dir, 0700)`. Written atomically with `purple_util_write_data_to_file_absolute()`
 (temp file plus rename), debounced 2 s, flushed on disconnect and unload,
-deleted on the `account-removed` signal.
+deleted on the `account-removed` signal. Prpls load before
+`purple_accounts_init()` registers that signal, so `ext/mam.c` connects it
+from a zero timeout armed in `plugin_init` (it runs once the main loop
+does) or on the first stream, whichever comes first.
 
 ```
 [archive user@example.org]

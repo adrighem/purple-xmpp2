@@ -55,6 +55,14 @@ fi
 if grep -q "cannot register existing type" "$LOG"; then
 	fail "GType registration clash with built-in prpl-jabber"
 fi
+# A signal connected before libpurple registers it (prpls load before
+# accounts_init() and friends) logs "signal_connect_common: should not be
+# reached" on every start. Pidgin routes GLib criticals to its debug log as
+# "g_log:". Fail on those and on criticals of our own functions (other
+# installed plugins may log theirs).
+if grep -E "signals: Something tried|g_log: .*(signal_connect_common|x2_|jabber_|xmpp2)" "$LOG"; then
+	fail "GLib-CRITICAL from xmpp2 during startup"
+fi
 echo "OK: pidgin probed and loaded $SO_NAME "
 
 # Confirm both protocol ids register side by side, using the headless harness.

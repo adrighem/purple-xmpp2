@@ -15,6 +15,7 @@
 #include "accountopt.h"
 #include "conversation.h"
 #include "debug.h"
+#include "eventloop.h"
 #include "signals.h"
 
 #include "core/dedup.h"
@@ -332,18 +333,53 @@ account_removed_cb(PurpleAccount *account, gpointer data)
 		x2_statefile_remove(account);
 }
 
+/*
+ * Prpls are loaded before purple_accounts_init() registers "account-removed"
+ * (see stream_management.c): connect once the main loop runs, which is
+ * after the core is initialised, or on the first stream if that is sooner.
+ */
+static gboolean removed_connected;
+static guint removed_timer;
+
+static void
+connect_account_removed(void)
+{
+	if (removed_connected)
+		return;
+	if (purple_signal_connect(purple_accounts_get_handle(),
+	                          "account-removed", (void *)&x2_ext_mam,
+	                          PURPLE_CALLBACK(account_removed_cb),
+	                          NULL) == 0) {
+		purple_debug_error(X2_MAM_DEBUG,
+		                   "cannot connect to account-removed\n");
+		return;
+	}
+	removed_connected = TRUE;
+}
+
+static gboolean
+connect_account_removed_cb(gpointer data)
+{
+	removed_timer = 0;
+	connect_account_removed();
+	return FALSE;
+}
+
 static void
 mam_plugin_init(PurplePlugin *plugin)
 {
-	purple_signal_connect(purple_accounts_get_handle(), "account-removed",
-	                      (void *)&x2_ext_mam,
-	                      PURPLE_CALLBACK(account_removed_cb), NULL);
+	removed_timer = purple_timeout_add(0, connect_account_removed_cb, NULL);
 }
 
 static void
 mam_plugin_uninit(PurplePlugin *plugin)
 {
-	purple_signals_disconnect_by_handle((void *)&x2_ext_mam);
+	if (removed_timer != 0)
+		purple_timeout_remove(removed_timer);
+	removed_timer = 0;
+	if (removed_connected)
+		purple_signals_disconnect_by_handle((void *)&x2_ext_mam);
+	removed_connected = FALSE;
 }
 
 static void
@@ -366,6 +402,7 @@ mam_stream_new(JabberStream *js)
 {
 	X2MamState *st = g_new0(X2MamState, 1);
 
+	connect_account_removed();
 	st->js = js;
 	st->own = jabber_id_get_bare_jid(js->user);
 	st->sf = x2_statefile_open(purple_connection_get_account(js->gc));
