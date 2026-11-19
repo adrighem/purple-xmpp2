@@ -55,6 +55,9 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `$XMPP2_SCRATCH`; slixmpp is pinned in `requirements.txt`.
   Put `timeout=` and other filter keys before `text=`, which takes the rest
   of the line.
+- `test_upload.sh` (XEP-0363: contact, room, size limit, http opt-in) and
+  `test_upload_fallback.sh` (profile `noupload`, SI fallback). The test
+  server serves plain http, so they set `--pref b:allow_plain_http_upload=1`.
 - `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
   harness and peer primitive (works with both prpls). `test_sm.sh` covers
   stream management (prpl-xmpp2 only, else exit 77).

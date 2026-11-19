@@ -51,6 +51,8 @@ set(XMPP2_SOURCES
     src/ext/carbons.c
     src/ext/ext.c
     src/ext/msgctx.c
+    src/ext/upload.c
+    src/ext/upload_xfer.c
     src/ibb.c
     src/iq.c
     src/jabber.c
@@ -77,7 +79,8 @@ add_library(x2core STATIC
     src/core/dedup.c
     src/core/forward.c
     src/core/sid.c
-    src/core/smstate.c)
+    src/core/smstate.c
+    src/core/upload_proto.c)
 set_target_properties(x2core PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     C_VISIBILITY_PRESET hidden)

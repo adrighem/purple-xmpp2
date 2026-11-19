@@ -48,6 +48,7 @@
 #include "data.h"
 #include "ibb.h"
 #include "ext/ext.h"
+#include "ext/upload.h"
 
 static PurplePlugin *my_protocol = NULL;
 
@@ -109,9 +110,9 @@ static PurplePluginProtocolInfo prpl_info =
 	jabber_roomlist_get_list,		/* roomlist_get_list */
 	jabber_roomlist_cancel,			/* roomlist_cancel */
 	NULL,							/* roomlist_expand_category */
-	jabber_can_receive_file,		/* can_receive_file */
-	jabber_si_xfer_send,			/* send_file */
-	jabber_si_new_xfer,				/* new_xfer */
+	x2_upload_prpl_can_receive_file,	/* can_receive_file */
+	x2_upload_prpl_send_file,		/* send_file */
+	x2_upload_prpl_new_xfer,		/* new_xfer */
 	jabber_offline_message,			/* offline_message */
 	NULL,							/* whiteboard_prpl_ops */
 	jabber_prpl_send_raw,			/* send_raw */
@@ -130,8 +131,8 @@ static PurplePluginProtocolInfo prpl_info =
 	NULL, /* add_buddy_with_invite */
 	NULL, /* add_buddies_with_invite */
 	NULL, /* get_cb_alias */
-	NULL, /* chat_can_receive_file */
-	NULL, /* chat_send_file */
+	x2_upload_prpl_chat_can_receive_file, /* chat_can_receive_file */
+	x2_upload_prpl_chat_send_file, /* chat_send_file */
 };
 
 static gboolean load_plugin(PurplePlugin *plugin)

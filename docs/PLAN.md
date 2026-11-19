@@ -50,7 +50,7 @@ Wave-2 ownership:
 | M3 | `ext/mam.c`, `ext/statefile.c`, `core/mam_proto.c`, `core/store.c` | none |
 | M5 | `ext/receipts.c`, `ext/markers.c`, `core/receipt_parse.c` | none |
 | M6 | `ext/correction.c`, `core/replace_parse.c` | none |
-| M7 | `ext/upload.c`, `core/upload_proto.c` | `libxmpp.c` (4 `prpl_info` pointers) |
+| M7 | `ext/upload.c`, `ext/upload_xfer.c`, `core/upload_proto.c` | `libxmpp.c` (5 `prpl_info` pointers: send_file, new_xfer, can_receive_file, chat_send_file, chat_can_receive_file) |
 | M8 | `ext/migrate.c` | `jabber.c` `jabber_actions()` (one entry) |
 | M9 | `stream_management.c/.h` | none |
 | M11 | `debian/`, `packaging/`, `.github/`, `README.md` install section | none |
@@ -261,7 +261,7 @@ Acceptance:
   `<replace id=...>` equal to the id of the harness's previous message.
 - Caps advertise `urn:xmpp:message-correct:0`.
 
-## M7: HTTP File Upload (XEP-0363)
+## M7: HTTP File Upload (XEP-0363) (implemented)
 
 Acceptance:
 - `upload bob@localhost /path/file.png` (1 MiB): xfer completes; peer
@@ -273,6 +273,14 @@ Acceptance:
 - Server without upload component: falls back to SI (upstream behaviour).
 - Unit: PUT request building; header values containing CR/LF are rejected;
   non-allowed slot headers are dropped.
+
+Status: done. Unit `test-upload` (core), integration `test_upload.sh`
+(contact, room, size limit, http opt-in, discovery) and
+`test_upload_fallback.sh` (profile `noupload`). The test server serves plain
+http, so those tests set the account option `allow_plain_http_upload`.
+https is only covered by URL parsing unit tests (libpurple's SSL plugin does
+the TLS). Not done: streaming from disk and progress (v1 reads the file into
+memory), XEP-0363 v0.2 (`urn:xmpp:http:upload`) services.
 
 ## M8: migration from prpl-jabber
 
