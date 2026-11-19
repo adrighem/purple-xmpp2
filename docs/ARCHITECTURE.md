@@ -161,7 +161,9 @@ Layering rules (enforced in review, cheap to grep):
 - `ext/` may include upstream headers. Upstream files include only
   `ext/ext.h` (and `msgctx.h` in `message.c`), never individual feature
   modules.
-- New symbols use the `x2_` prefix. Debug categories `xmpp2-<module>`.
+- New symbols use the `x2_` prefix. The inherited debug category `jabber`
+  is renamed to `xmpp2` mechanically in M1; new modules use `xmpp2-<module>`.
+  Tests assert only on `xmpp2*` categories.
 - Each feature module stays well under 500 lines; split before it grows.
 
 ## 5. Hook layer (`ext/ext.h`)
@@ -199,10 +201,10 @@ in `chat.c`. `JabberStream` gains one field: `X2Stream *x2`.
 
 Login sequence after M1: bind, SM enable, session, server `disco#items`
 and `disco#info`, own bare-JID `disco#info` (MAM support lives there on
-Prosody), roster,
-`pre_presence` (MAM starts buffering), initial presence (offline messages
-start flowing), `session_ready` (carbons enable, MAM catch-up query, upload
-discovery). One extra round trip at login, in exchange for knowing MAM
+Prosody), roster, `pre_presence` (MAM starts buffering), initial presence
+(offline messages start flowing), `session_ready` (carbons enable, upload
+discovery), carbons enable IQ result (or error, or no carbons support), then
+the MAM catch-up query. One extra round trip at login, in exchange for knowing MAM
 support before offline messages arrive.
 
 ## 6. Inbound message pipeline
@@ -227,15 +229,24 @@ typedef struct {
 Order of the inbound chain (registry order matters and is fixed):
 
 1. `carbons`: if the outer stanza carries `urn:xmpp:carbons:2`
-   `received`/`sent`, verify outer `from` equals our bare JID exactly (else
-   drop and log: forged carbon), unwrap, set `src=CARBON`, `dir`.
+   `received`/`sent`, verify outer `from` equals our bare JID exactly, and
+   for `sent` the inner `from` bare JID equals ours, for `received` the inner
+   `to` bare JID equals ours (else drop and log: forged carbon). Unwrap, set
+   `src=CARBON`, `dir`.
 2. `mam`: if it carries `urn:xmpp:mam:2` `<result>`, verify outer `from` is
    the archive we queried (own bare JID or the room) and `queryid` matches
-   an active query (else drop), unwrap `<forwarded>`, take `ts` from its
-   `<delay>`, set `stanza_id` from `result@id`, `src=MAM`, `dir` from
-   comparing inner `from` with our bare JID (or our nick/occupant-id in MUC).
+   an active query (else drop). Unwrap `<forwarded>` and check the inner
+   message against the archive: account archive requires inner `from` or
+   `to` bare JID to equal ours; room archive requires inner `from` bare JID
+   to equal the room JID and always takes the MUC delivery path, whatever the
+   inner `type` says (else drop and log: forged MAM result). Take `ts` from
+   the `<forwarded><delay>`, `stanza_id` from `result@id`, `src=MAM`, `dir`
+   from comparing inner `from` with our bare JID (or our nick/occupant-id in
+   MUC).
 3. `mam` (dedup and ordering): drop if `key` already seen. If the archive is
-   in `SYNCING` and `src` is LIVE or CARBON, queue it (`X2_DEFERRED`).
+   in `SYNCING` and `src` is LIVE or CARBON, queue it (`X2_DEFERRED`). The
+   queue is flushed to the UI (with dedup) on `LIVE`, on watchdog expiry and
+   on stream teardown: a duplicate beats a lost message.
 4. `receipts`, `markers`, `correction`: consume pure control messages
    (`<received/>`, `<displayed/>` without body), answer receipt requests,
    rewrite corrections.
@@ -258,7 +269,9 @@ in the ring so a later MAM catch-up does not show our own message twice.
 ### 7.1 Carbons (XEP-0280)
 
 `server_info`: note `urn:xmpp:carbons:2`. `session_ready`: send
-`<enable/>`. Inbound handled in step 1 above. Sent carbons appear as outgoing
+`<enable/>`. The account-archive MAM query is sent only after the enable IQ
+result (or error) arrives; querying earlier opens a window in which a message
+from another device is neither in the catch-up nor copied to us. Inbound handled in step 1 above. Sent carbons appear as outgoing
 lines in the right conversation; received carbons appear as normal incoming.
 No receipts or markers are sent in response to a carbon (the receiving
 device does that).
@@ -273,7 +286,12 @@ IDLE --start--> SYNCING --fin complete--> LIVE
                   |  ^ fin incomplete: next page (after=<last>)
                   |  item-not-found on after=cursor: retry with start=cursor_ts
                   +--error--> LIVE (flush queue, log, notify once)
+                  +--watchdog: 30 s without a result or fin--> LIVE
+                       (flush queue, one system notice "history incomplete")
 ```
+
+Stream teardown in any state flushes the queue to the UI before the
+`JabberStream` is freed.
 
 Queries (`core/mam_proto.c`): `urn:xmpp:mam:2` form with optional `start`
 and `with`, RSM `<max>` 100 and `<after>`/`<before/>`. Page responses are
@@ -281,26 +299,35 @@ and `with`, RSM `<max>` 100 and `<after>`/`<before/>`. Page responses are
 <last/></set></fin>`. Results arrive before `<fin>` on the same stream, so
 when `<fin>` is processed every result of that page is already delivered.
 
-Account archive, on `session_ready` (follows Gajim's `mam.py`):
+Account archive, after the carbons enable result (follows Gajim's `mam.py`):
 
-- Cursor stored: `after=<cursor>`, page until `complete='true'`.
-- No cursor (first run): `start = now - mam_initial_days` (account option,
-  default 1; Gajim uses 7 but Pidgin opens a window per conversation). A
-  value of 0 means: fetch only the latest id (`<before/>`, `max=1`) to set the
-  cursor, display nothing. Accounts created by migration use this mode.
+- Cursor stored: `after=<cursor>`, page until `complete='true'`, at most
+  `mam_max_pages` (20, i.e. 2000 messages). Beyond the cap: stop, jump to the
+  last page (`<before/>`, `max=100`) and write one system notice "older
+  history skipped" into each affected conversation.
+- No cursor, fresh account: `start = now - mam_initial_days` (account
+  option, default 1; Gajim uses 7 but Pidgin opens a window per
+  conversation). 0 means cursor-only.
+- No cursor, cloned account (`[meta] initial=cursor-only`): fetch only the
+  latest id (`<before/>`, `max=1`) to set the cursor, display nothing, so
+  history prpl-jabber already logged is not replayed.
 - `item-not-found` (cursor pruned from the archive): retry once with
-  `start=cursor_ts`, else with the first-run rule.
+  `start=cursor_ts`, skipping any result whose id equals the old cursor
+  (the `start` bound is inclusive), else apply the first-run rule.
 
 Rooms (M4), on join: disco#info the room before sending the join presence
 (cached per stream; Gajim does the same). If the room advertises
-`urn:xmpp:mam:2`, join with `<history maxchars='0'/>` and on self-presence
-(`chat_joined`) query the room archive (`to=room`):
+`urn:xmpp:mam:2`, join with `<history maxchars='0' maxstanzas='0'/>` (some
+servers honour only one of the two). `chat_joined` fires once per join, on
+the first self-presence carrying status code 110, never on a nick change or
+a later self-presence update; it then queries the room archive (`to=room`):
 
 - Cursor stored and newer than `mam_muc_threshold_days` (default 2):
-  `after=<cursor>`, paged, at most 10 pages; beyond that jump to the last page.
-- Otherwise: last page only (`<before/>`, `max=50`), plus one system line
-  "older history skipped". This mirrors classic MUC history but without
-  replaying it on every rejoin.
+  `after=<cursor>`, paged, at most 10 pages; beyond that jump to the last
+  page and write one system line "older history skipped".
+- Otherwise: last page only (`<before/>`, `max=50`), plus the same system
+  line. This mirrors classic MUC history but without replaying it on every
+  rejoin.
 - Room without MAM: unchanged upstream behaviour (legacy history).
 
 Ordering: Pidgin can only append to a conversation. While an archive is
@@ -322,10 +349,15 @@ debounce (see 9); exactly once otherwise.
 - `S:<stanza-id>` when the message has a trusted stanza-id (XEP-0359:
   `by` equals the archive JID and the archive advertised `urn:xmpp:sid:0` or
   `urn:xmpp:mam:2`; otherwise stanza-ids are spoofable and ignored).
-- Otherwise `O:<dir>:<peer>:<origin-id>`, else `I:<dir>:<peer>:<@id>`.
-- For MAM results both the stanza-id and the inner origin-id/@id key are
-  checked, so a message first seen live without a stanza-id (our own sends;
-  Prosody does not stamp sent carbons) is recognised in a later catch-up.
+- Otherwise `O:<dir>:<peer>:<origin-id>`.
+- Otherwise, only for `dir=OUT` sent by this client (ids we generated):
+  `I:out:<peer>:<@id>`. Foreign `@id` values are not unique enough to key on.
+- Otherwise no key: the message is never treated as a duplicate.
+- Inner keys (`O:`/`I:`) are recorded only for messages delivered without a
+  trusted stanza-id, and a MAM result consults them in addition to its
+  `S:` key. This recognises in a later catch-up a message first seen live
+  without a stanza-id (our own sends; Prosody does not stamp sent carbons),
+  without letting an attacker-chosen origin-id suppress an archived message.
 
 Two stores: an in-memory LRU of 4096 keys per stream (`core/dedup.c`), and a
 persisted ring of the last 256 non-`S:` keys per archive in the state file,
@@ -422,9 +454,16 @@ MAM, not SM, is the primary offline-messaging mechanism.
 
 ## 8. Security rules (checklist for review and QA)
 
-- Carbons: outer `from` must equal our bare JID exactly.
+- Carbons: outer `from` must equal our bare JID exactly; `sent`: inner
+  `from` bare JID must be ours; `received`: inner `to` bare JID must be ours.
 - MAM results: outer `from` must be the queried archive (absent counts as our
   bare JID for the account archive only), `queryid` must match.
+- MAM inner message, account archive: inner `from` or `to` bare JID must be
+  ours. Room archive: inner `from` bare JID must equal the room JID, and the
+  message is always delivered as groupchat into that room (never as a 1:1
+  from a spoofed JID).
+- Dedup keys: never derived from foreign `@id`; inner keys only from
+  messages without a trusted stanza-id (7.3).
 - stanza-id: trusted only when `by` matches the archive and the archive
   advertised support; otherwise ignored for dedup and cursors.
 - Corrections: sender must match the original sender (7.6).
@@ -435,8 +474,10 @@ MAM, not SM, is the primary offline-messaging mechanism.
 ## 9. Persistent state
 
 Chosen: one GKeyFile per account at
-`purple_user_dir()/xmpp2/<purple_escape_filename(bare JID)>.state`,
-written atomically with `purple_util_write_data_to_file_absolute()`
+`purple_user_dir()/xmpp2/<purple_escape_filename(purple_account_get_username())>.state`
+(the full username including resource, so two accounts for the same bare JID
+never share a file). The directory is created with
+`purple_build_dir(dir, 0700)`. Written atomically with `purple_util_write_data_to_file_absolute()`
 (temp file plus rename), debounced 2 s, flushed on disconnect and unload,
 deleted on the `account-removed` signal.
 
@@ -467,12 +508,14 @@ temp path. Account-level user choices (`mam_initial_days`,
 `purple_plugins_probe()`, before `purple_accounts_init()` (`core.c` 149 vs
 163), so the check is deferred with `purple_timeout_add(0)`.
 
-- Offer once: if some `prpl-jabber` account has no `prpl-xmpp2` twin (same
-  username) and the pref `/plugins/prpl/xmpp2/migration_offered` is false,
+- Offer once, only when `purple_core_get_ui()` is `"pidgin"` (Finch,
+  the harness and other UIs never get an unsolicited dialog): if some
+  `prpl-jabber` account has no `prpl-xmpp2` twin (same username) and the pref
+  `/plugins/prpl/xmpp2/migration_offered` is false,
   `purple_request_action()`: "Copy N XMPP accounts to XMPP (xmpp2)? The
   originals are kept but disabled." Buttons: Copy, Not now, Never.
-  The same function is available as a prpl action "Copy XMPP accounts..."
-  on any connected xmpp2 account.
+- The same function is always available, in every UI, as the prpl action
+  "Copy XMPP accounts..." on any connected xmpp2 account.
 - Copy: username (JID/resource), saved password, alias, user info, buddy
   icon, proxy info, and each protocol option that prpl-jabber declares
   (`prpl_info->protocol_options` of the loaded prpl-jabber gives setting
@@ -480,11 +523,12 @@ temp path. Account-level user choices (`mam_initial_days`,
   (room bookmarks) with their components into the same group. The roster is
   server side and needs no copy. Not copied: buddy notes, pounces, local
   contact merges (documented).
-- Enable the clone, disable the original (same full JID on both would make
-  the server kick one with a resource conflict, in a loop). Never delete.
-  Idempotent: skips accounts that already have a twin.
+- If the original is enabled: enable the clone, disable the original (same
+  full JID on both would make the server kick one with a resource conflict,
+  in a loop). If the original is disabled, the clone stays disabled too.
+  Never delete. Idempotent: skips accounts that already have a twin.
 - Seed the state file with `initial=cursor-only`, so the first catch-up does
-  not re-show history prpl-jabber already logged.
+  not re-show history prpl-jabber already logged (7.2).
 - Logs: libpurple derives the log directory from `list_icon()`
   (`log.c` 350). We return `"jabber"`, so the clone writes to the same
   `logs/jabber/<user>/` and the history viewer shows one continuous history.
@@ -498,7 +542,18 @@ accounts tell them apart by the protocol name in the account list.
 
 ## 12. Testability
 
-- Unit (`tests/unit/`, GLib GTest, `ctest`): every `core/` file, fed with
+Test contract (fixed by the tech lead): `ctest` labels
+
+| Label | Needs | Where it runs |
+|---|---|---|
+| `unit` | nothing (no network) | distro build containers (Debian 13, Ubuntu 24.04, Fedora) |
+| `smoke` | pidgin + xvfb | CI host job |
+| `integration` | podman Prosody | CI host job; exit 77 means skipped |
+
+Ownership: `tests/unit/` belongs to the engineer of each feature; the rest
+of `tests/` belongs to QA.
+
+- Unit (`tests/unit/`, GLib GTest, label `unit`): every `core/` file, fed with
   XML strings through `xmlnode_from_str()`. Links libpurple for `xmlnode`
   only; no `purple_core_init()`. Covers forged carbons, stanza-id `by`
   checks, `<fin>` parsing, dedup LRU eviction, store round-trip and
@@ -509,5 +564,5 @@ accounts tell them apart by the protocol name in the account list.
   account. Needed harness extensions are listed in PLAN.md M1.
 - Smoke (`tests/smoke/`): Pidgin under Xvfb loads both prpls.
 - Every feature milestone ships its unit tests and at least one
-  integration script; CI runs unit tests on Debian 13, Ubuntu 24.04, Fedora
-  and the integration suite on Debian 13.
+  integration script; CI runs `unit` on Debian 13, Ubuntu 24.04, Fedora and
+  `smoke` plus `integration` in the host job.
