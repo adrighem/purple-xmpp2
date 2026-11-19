@@ -1,0 +1,268 @@
+# purple-xmpp2 v1 plan
+
+Milestones in dependency order. Each lists the files it owns, so parallel
+work does not collide. Design references point to `docs/ARCHITECTURE.md`.
+
+Test vocabulary: "harness" is `tests/integration/xmpp2-harness` as alice,
+"peer" is `tests/integration/peer.py` (bob, carol, or alice on another
+resource such as `alice@localhost/phone`), server is `tests/server/run.sh`.
+Every integration test also runs once with `PRPL=prpl-jabber` where that
+makes sense, to document the before/after difference.
+
+## Dependency graph
+
+```
+M0 scaffold --> M1 prune + hooks --+--> M2 carbons ------+
+                                   +--> M3 MAM account --+--> M4 MAM rooms --+
+                                   +--> M5 receipts+markers                  |
+                                   +--> M6 correction                        +--> M10 SM resume --> M12 v1
+                                   +--> M7 HTTP upload                       |
+                                   +--> M8 migration                         |
+                                   +--> M9 SM fixes ---------------------------+
+M0 --> M11 packaging + CI (any time after M0)
+```
+
+## Parallel waves and file ownership
+
+| Wave | Milestones in parallel | Shared files (conflict policy) |
+|---|---|---|
+| 1 | M0, then M1 (one owner, sequential) | everything |
+| 2 | M2, M3, M5, M6, M7, M8, M9, M11 | `ext/ext.c` registry table and `CMakeLists.txt` source list: one line each, append only, rebase trivially. `x2stream.h` and `namespaces.h` are pre-filled in M1 so no wave-2 milestone edits them |
+| 3 | M4 (after M3), M10 (after M3 and M9, and after wave 2 has merged) | M10 owns `jabber.c`/`jabber.h` exclusively |
+
+Wave-2 ownership:
+
+| Milestone | Owns | Touches outside own files |
+|---|---|---|
+| M2 | `ext/carbons.c`, `core/carbon_parse.c` | none |
+| M3 | `ext/mam.c`, `ext/statefile.c`, `core/mam_proto.c`, `core/store.c` | none |
+| M5 | `ext/receipts.c`, `ext/markers.c`, `core/receipt_parse.c` | none |
+| M6 | `ext/correction.c`, `core/replace_parse.c` | none |
+| M7 | `ext/upload.c`, `core/upload_proto.c` | `libxmpp.c` (4 `prpl_info` pointers) |
+| M8 | `ext/migrate.c` | `jabber.c` `jabber_actions()` (one entry) |
+| M9 | `stream_management.c/.h` | none |
+| M11 | `debian/`, `packaging/`, `.github/`, `README.md` install section | none |
+
+## M0: scaffold builds and loads (in progress)
+
+Scope: CMake build, `xmpp2_internal.h`, id/name/prefs/caps-file/cmd
+renames, `-fvisibility=hidden`, smoke and baseline harness.
+
+Acceptance:
+- `cmake -B build && cmake --build build` succeeds with `-Wall -Wextra` on
+  Debian 13 (libpurple 2.14.14) and Ubuntu 24.04 (2.14.12).
+- `nm -D --defined-only build/libxmpp2.so` prints only `purple_init_plugin`.
+- `tests/smoke/pidgin-load.sh` passes: Pidgin probes both `prpl-jabber`
+  and `prpl-xmpp2`, both appear in the Add Account protocol list, and the
+  debug log has no "cannot register existing type" or plugin load error.
+- `PRPL=prpl-xmpp2 PLUGIN_DIR=build tests/integration/test_basic.sh` passes.
+- A prpl-jabber account and an xmpp2 account (different JIDs) are connected
+  at the same time in one Pidgin; both exchange messages.
+
+## M1: prune and hook layer (single owner)
+
+Scope (ARCHITECTURE 3, 5, 6):
+- Delete `google/`, `jingle/`, `bosh.c`, `auth_cyrus.c`, `auth_digest_md5.c`
+  and every branch using them; remove the BOSH URL account option and media
+  prpl ops. Drop `XMPP2_CYRUS_SASL` from CMake.
+- `src/xmpp2.map` version script, `--no-undefined`, CI symbol check script.
+- `_()` gettext fallback to the `pidgin` domain; caps node and XEP-0092
+  name.
+- `ext/ext.c/.h` registry, `ext/x2stream.h` with one pointer per v1 module,
+  `ext/msgctx.c` (X2Msg build and deliver), `message.c` delivery takes the
+  context, `dir=OUT` path writes `SEND | REMOTE_SEND`.
+- Login chain: own bare-JID `disco#info`, `pre_presence` and
+  `session_ready` hooks.
+- Outbound: `origin-id` UUID used as stanza id.
+- All v1 namespaces in `namespaces.h`.
+- `core/sid.c`, `core/forward.c`, `core/dedup.c` with GTest unit tests;
+  `tests/unit/` wired into `ctest`.
+- Harness extensions needed by wave 2 (do them here, once):
+  - `--userdir DIR` that persists across runs (state file and logs survive a
+    restart); `--log txt` enables IM and chat logging in text format.
+  - event lines `EV <kind> conv=<name> who=<jid> flags=<hex> mtime=<epoch> <text>`
+    for every conversation write, including system and sent lines.
+  - commands `join ROOM NICK`, `groupsend ROOM TEXT`, `correct JID TEXT`,
+    `upload JID PATH`, `focus JID` (sets `unseen-count` 0 and emits
+    `PURPLE_CONV_UPDATE_UNSEEN`), `logcount JID TEXT N`, `expect-ev ...`.
+- Peer extensions: `--resource`, `raw XML` (send a hand-written stanza, for
+  forged carbons and MAM results), `receipts on|off`, `markers on|off`,
+  `upload PATH`.
+
+Acceptance:
+- All M0 acceptance still passes; `git grep -i 'google\|bosh\|cyrus\|jingle' src`
+  only finds comments slated for removal (target: none).
+- Unit tests pass; `ctest` runs in under 5 s.
+- Every outgoing `<message>` carries `<origin-id xmlns='urn:xmpp:sid:0' id=X>`
+  with `X` equal to the stanza `id` (peer prints raw stanza).
+- Libpurple debug log shows the order: roster result, `pre_presence`, initial
+  presence, `session_ready`.
+- `make`-time warning count does not increase versus M0.
+
+## M2: carbons (XEP-0280)
+
+Acceptance:
+- Harness online, peer `alice/phone` sends "c1" to bob: harness shows
+  `EV sent conv=bob@localhost flags` containing `REMOTE_SEND`, text "c1",
+  exactly once, in the bob conversation, logged once.
+- bob sends "c2" while harness and alice/phone are online: harness shows it
+  once as incoming.
+- Peer bob sends a raw `<message from='bob@localhost'>` wrapping a
+  `<sent xmlns='urn:xmpp:carbons:2'>` forged carbon: nothing displayed,
+  debug log says forged carbon dropped.
+- Server without carbons (disable `mod_carbons` via a test config switch):
+  login succeeds, no enable IQ sent.
+
+## M3: MAM catch-up for the account archive (XEP-0313)
+
+Acceptance (all with persistent `--userdir`):
+1. First run with `mam_initial_days=0`: harness connects, shows nothing from
+   history; state file has `cursor` for `alice@localhost`.
+2. Harness offline; bob sends m1..m3 with 2 s gaps. Harness connects: three
+   incoming events in bob's conversation, in order, flags include
+   `DELAYED`, `mtime` within 2 s of the send times, each logged once.
+3. Restart with no new traffic: zero history events.
+4. Harness offline; `alice/phone` sends "p1" to carol: on connect, outgoing
+   `REMOTE_SEND` "p1" in carol's conversation.
+5. Harness online; alice/phone sends "p2" (sent carbon, no stanza-id on
+   Prosody). Restart harness: "p2" is not shown again (ring dedup).
+6. Harness sends "h1" to bob, quits, restarts: "h1" not shown again.
+7. Offline storage and MAM overlap (Prosody `mod_offline` on): offline
+   message shown exactly once.
+8. 250 messages while offline (page size 100): all 250 shown, in order,
+   three pages in the debug log.
+9. Live during catch-up: peer sends "live1" right after harness signs on
+   while sync of 250 messages runs: "live1" shown once, after the 250.
+10. Corrupt the `cursor` in the state file: catch-up falls back to
+    `start=cursor_ts`, no error dialog, no duplicates of pre-cursor messages.
+11. Forged MAM result (`raw` from bob with `<result>` and a random queryid):
+    nothing displayed.
+12. Server without MAM: login works, behaviour equals M1.
+- Unit: `mam_proto` query building (with and without `after`/`start`),
+  `<fin>` parsing incl. missing `<last>`, `store` round-trip, atomic write,
+  corrupt file yields empty state plus a warning.
+
+## M4: MAM for rooms
+
+Acceptance:
+1. carol posts r1..r5 in `test@conference.localhost` while alice is not in
+   the room; harness joins: five messages, in order, `DELAYED`, once.
+2. Leave and rejoin with no new traffic: zero history messages (with
+   prpl-jabber the same test shows legacy history again: record it).
+3. Cursor older than `mam_muc_threshold_days`: only the last 50 messages
+   plus one "older history skipped" system line.
+4. Room with MAM disabled: legacy history behaviour unchanged.
+5. Own message sent from alice/phone into the room while harness was away:
+   shown once, attributed to alice's nick.
+6. MUC private message via MAM opens a conversation with the occupant full
+   JID.
+
+## M5: receipts and chat markers (XEP-0184, XEP-0333)
+
+Acceptance:
+- Outgoing 1:1 messages carry `<request xmlns='urn:xmpp:receipts'/>` and
+  `<markable xmlns='urn:xmpp:chat-markers:0'/>`; groupchat ones carry
+  neither.
+- bob (roster contact) sends with a receipt request: peer receives
+  `<received id=...>` for it. A non-roster sender gets none. A MAM-fetched
+  or carbon-copied message triggers none.
+- bob sends a markable message, harness `focus bob@localhost`: peer receives
+  exactly one `<displayed id=...>` for the newest message; a second focus
+  without new messages sends nothing.
+- bob acknowledges a harness message: signal `xmpp2-receipt` fires (debug
+  line); with the notices option on, one system line, not logged.
+- Caps advertise both namespaces (peer `disco`).
+
+## M6: message correction (XEP-0308)
+
+Acceptance:
+- bob sends "teh", then a correction "the" referencing it: harness shows
+  "the" with the "corrected:" marker.
+- bob sends a correction referencing a message id from carol: shown as a
+  normal message without the marker.
+- Harness `correct bob@localhost fixed`: peer receives a message with
+  `<replace id=...>` equal to the id of the harness's previous message.
+- Caps advertise `urn:xmpp:message-correct:0`.
+
+## M7: HTTP File Upload (XEP-0363)
+
+Acceptance:
+- `upload bob@localhost /path/file.png` (1 MiB): xfer completes; peer
+  receives a body that is an `http(s)://` URL with matching `x:oob`; a GET
+  of that URL returns identical bytes (sha256).
+- Upload to a room: room members receive the URL.
+- File above `max-file-size`: xfer fails before any network request with a
+  clear error.
+- Server without upload component: falls back to SI (upstream behaviour).
+- Unit: PUT request building; header values containing CR/LF are rejected;
+  non-allowed slot headers are dropped.
+
+## M8: migration from prpl-jabber
+
+Acceptance (Pidgin under Xvfb with a prepared `accounts.xml` and `blist.xml`,
+or the harness calling `x2_migrate_run()` through a test command):
+- With one prpl-jabber account and no xmpp2 account, the offer appears once;
+  "Copy" creates an xmpp2 account with the same username, password, alias,
+  resource, connection security and port; the original remains, disabled.
+- Room bookmarks (blist chats) of the original exist for the clone.
+- Running the migration again creates nothing new.
+- "Never" persists across restarts; "Not now" offers again next start.
+- The clone's first connect displays no history (`initial=cursor-only`) and
+  its logs land in the same `logs/jabber/<user>/` directory.
+
+## M9: stream management fixes
+
+Acceptance:
+- Peer `streamfeatures`-style check plus debug log: `<enable resume='true'/>`
+  sent, `<enabled id max>` parsed and logged.
+- Sending 20 messages in a burst produces at most 5 `<r/>` (was 20).
+- Unit-style test of `h` arithmetic across 2^32 wrap.
+- Kill the TCP connection (`ss -K` or podman network disconnect) while one
+  message is unacked; after Pidgin's reconnect the message reaches bob
+  exactly once (with MAM), and no stale IQ or presence is resent.
+- `<failed h='N'>` trims exactly N stanzas (debug log).
+
+## M10: silent reconnect with resumption
+
+Acceptance:
+- Drop the TCP connection for 5 s while connected: the account never shows
+  offline in the UI, buddies keep their presence, joined rooms stay joined,
+  debug log shows `<resumed>`; messages bob sent during the gap appear once.
+- Drop longer than the server's `max`: falls back to a normal reconnect and
+  MAM catch-up; nothing lost or duplicated.
+- Messages typed during the gap are delivered once after resume.
+- All earlier integration tests still pass.
+
+## M11: packaging and CI
+
+Acceptance:
+- `dpkg-buildpackage -us -uc` on Debian 13 and Ubuntu 24.04 produces a
+  package installing `libxmpp2.so` into the purple plugin dir; `lintian`
+  has no errors.
+- `rpmbuild -ba packaging/rpm/purple-xmpp2.spec` on current Fedora succeeds.
+- GitHub Actions: build plus unit tests on the three distros, symbol check,
+  integration suite on Debian 13 with the Prosody container, release-please
+  with `include-commit-authors`.
+
+## M12: v1 release
+
+Acceptance:
+- All milestone acceptance tests green in CI.
+- Manual test pass in real Pidgin against Prosody and one ejabberd instance
+  (ejabberd stamps stanza-ids differently; verify M3 tests 4 and 5).
+- README: install, coexistence with prpl-jabber, migration, known limits
+  (no visual ticks, no OMEMO, no A/V, no BOSH).
+
+## Tech lead decisions (2026-11-19)
+
+- MAM (XEP-0313) is the offline-messaging mechanism, as the architect argued.
+  Stream management v1 means fixing the upstream behavior: batched acks, and
+  never resend the unacked queue on a fresh session. Stream resumption is only
+  a best-effort silent reconnect (M10, last milestone, may slip to v0.2).
+- Drop `google/`, `jingle/`, BOSH, Cyrus SASL, and DIGEST-MD5 in M1.
+- Receipts and chat markers: protocol, signals, and an optional notice line in
+  v1. No GTK tick UI in v1.
+- MAM first-sync window: default 1 day, as an account option (0 disables). The
+  same applies to cloned accounts. A small risk of duplicates against old
+  prpl-jabber logs is accepted and documented in the README.
+- Target libpurple >= 2.14.12 (Ubuntu 24.04).
