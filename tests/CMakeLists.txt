@@ -45,7 +45,8 @@ set_tests_properties(integration-selftest PROPERTIES
     ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>")
 
 # Feature integration tests: one test_<name>.sh per entry.
-foreach(feature_test carbons carbons_off sm upload upload_fallback)
+foreach(feature_test carbons carbons_off mam mam_bulk mam_recovery sm upload
+        upload_fallback)
     add_test(NAME integration-${feature_test}
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh
             ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_${feature_test}.sh)
