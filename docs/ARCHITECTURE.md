@@ -150,7 +150,8 @@ src/
     receipts.c          XEP-0184
     markers.c           XEP-0333
     peerutil.c          caps policy and notice line shared by receipts, markers
-    correction.c        XEP-0308
+    correct.c           XEP-0308 inbound check, marker, outbound hook
+    correct_cmd.c       /correct command
     upload.c            XEP-0363 (PurpleXfer glue)
     migrate.c           clone prpl-jabber accounts
   core/                 NEW  pure logic: glib + xmlnode.h only, no purple core,
@@ -163,7 +164,8 @@ src/
     smstate.c           XEP-0198 counters (mod 2^32), bounded unacked queue
     store.c             GKeyFile archive state: cursors and key rings
     receipt_parse.c     receipts and markers element parse/build
-    replace_parse.c     correction element parse/build
+    replace_parse.c     correction element parse/build, sender identity, marker
+    corrlog.c           bounded (conversation, id) -> author log, last sent id
     upload_proto.c      slot request/response, HTTP PUT request, status line
 tests/
   unit/                 NEW  GTest per core/ file, run by ctest
@@ -505,16 +507,36 @@ already focused window never resets the unseen count, so it is not marked
 until the next reset. Read-state sync from our other devices
 (sent `displayed` carbons, XEP-0490) is later.
 
-### 7.6 Message correction (XEP-0308)
+### 7.6 Message correction (XEP-0308) (implemented)
 
-Incoming `<replace id=X>`: accept only if X was seen in this conversation
-from the same sender (1:1: same bare JID; MUC: same occupant-id when
-XEP-0421 is present, else same nick and X seen this session). Accepted
-corrections are shown as a new line prefixed with a marker ("corrected:")
-since libpurple cannot edit history; rejected ones are shown as plain new
-messages without the marker. Outgoing: `/correct <text>` command replaces our
-last message in that conversation (we keep its id per conversation).
-Advertise `urn:xmpp:message-correct:0`.
+Module `correction` (`ext/correct.c`), after `mam` in the inbound chain, so
+live, carbon and MAM messages are treated alike and only once. Every message
+with a body is recorded in a bounded log (2048 ids per stream, oldest
+dropped first) as (conversation `peer`, id) -> author, for `id`,
+`origin-id` and the trusted `stanza-id`. The first author of an id stands.
+The author is the bare JID in 1:1 and, in a room, the XEP-0421 occupant-id
+when present, else the full JID (room/nick).
+
+Incoming `<replace id=X>` with a body is accepted only if X was recorded in
+the same conversation from the same author. An accepted correction is
+shown as a new line whose text is prefixed with `corrected: ` (the body is
+rewritten in the stanza before delivery, the XHTML-IM alternative is
+dropped so it cannot hide the marker), and logged like any message, since
+libpurple cannot edit history. A correction of an unknown id (not seen in
+this session or in the MAM data fetched so far) or by another author is
+shown as a plain message without the marker, with a warning in the
+`xmpp2-correct` debug category. Corrections themselves are never recorded as
+originals, so a later correction still names the first message.
+
+Outgoing: the `correction` outbound hook remembers the id of the last
+message we sent per conversation (1:1 and rooms; also taken from sent
+carbons of our other devices). `/correct TEXT` (`ext/correct_cmd.c`,
+registered for IM and chat) sets that id as `pending`, sends TEXT through
+the normal send path (shown and logged as a sent line) and the hook adds
+`<replace id=last/>`. A correction is not itself remembered as the last
+message, so repeated `/correct` always names the original. Without an
+earlier message the command fails with a message. Advertises
+`urn:xmpp:message-correct:0`.
 
 ### 7.7 HTTP File Upload (XEP-0363)
 

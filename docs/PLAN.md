@@ -49,7 +49,7 @@ Wave-2 ownership:
 | M2 | `ext/carbons.c`, `core/carbon_parse.c` | none |
 | M3 | `ext/mam.c`, `ext/statefile.c`, `core/mam_proto.c`, `core/store.c` | none |
 | M5 | `ext/receipts.c`, `ext/markers.c`, `core/receipt_parse.c` | none |
-| M6 | `ext/correction.c`, `core/replace_parse.c` | none |
+| M6 | `ext/correct.c`, `ext/correct_cmd.c`, `core/replace_parse.c`, `core/corrlog.c` | none |
 | M7 | `ext/upload.c`, `ext/upload_xfer.c`, `core/upload_proto.c` | `libxmpp.c` (5 `prpl_info` pointers: send_file, new_xfer, can_receive_file, chat_send_file, chat_can_receive_file) |
 | M8 | `ext/migrate.c` | `jabber.c` `jabber_actions()` (one entry) |
 | M9 | `stream_management.c/.h` | none |
@@ -273,7 +273,15 @@ Acceptance:
   line); with the notices option on, one system line, not logged.
 - Caps advertise both namespaces (peer `disco`).
 
-## M6: message correction (XEP-0308)
+## M6: message correction (XEP-0308) (implemented)
+
+Status: implemented (ARCHITECTURE 7.6). Tests: `tests/unit/test_replace.c`
+(element parse/build, sender identity, marking, bounded log) and
+`test_correct.c` (module in the real pipeline: marker, foreign and unknown
+ids, room nick and occupant-id, outbound bookkeeping), and
+`tests/integration/test_correct.sh` (1:1, room, `/correct`, caps, offline
+delivery). The peer gained `bind NAME REGEX` and `${NAME}` expansion to
+compare ids across stanzas.
 
 Acceptance:
 - bob sends "teh", then a correction "the" referencing it: harness shows

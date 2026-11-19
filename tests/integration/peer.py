@@ -24,6 +24,8 @@ Waiting and assertions (regex for stanza actions, substring for wait):
   no-stanza REGEX [SECS]    no inbound stanza matches (history counts)
   count-stanza REGEX N      exactly N inbound stanzas match so far
   expect-out REGEX [SECS]   same for stanzas this peer sent
+  bind NAME REGEX [SECS]    wait for an inbound stanza matching REGEX and store
+                            its group 1; "${NAME}" in later actions expands to it
   clear                     forget recorded messages and stanzas
   sleep SECS
 Settings:
@@ -78,6 +80,7 @@ class Peer(slixmpp.ClientXMPP):
         self.auto_receipts = False
         self.auto_markers = False
         self.wakeup = asyncio.Event()
+        self.vars: dict[str, str] = {}
         for plug in ("xep_0030", "xep_0045", "xep_0199", "xep_0313",
                      "xep_0280", "xep_0198"):
             self.register_plugin(plug)
@@ -153,6 +156,8 @@ class Peer(slixmpp.ClientXMPP):
 
     # ---- actions ----
     async def run_action(self, line: str) -> None:
+        for name, val in self.vars.items():
+            line = line.replace("${%s}" % name, val)
         cmd, _, rest = line.strip().partition(" ")
         handler = getattr(self, "act_" + cmd.replace("-", "_"), None)
         if handler is None:
@@ -249,6 +254,19 @@ class Peer(slixmpp.ClientXMPP):
         if got != int(want):
             raise ValueError(f"stanza {rx!r}: want {want} got {got}")
         print(f"PEER count {rx} = {got}", flush=True)
+
+    async def act_bind(self, rest: str) -> None:
+        name, _, rest = rest.partition(" ")
+        rx, secs = self._args_secs(rest, self.timeout)
+        comp = re.compile(rx, re.S)
+
+        def found() -> bool:
+            return any(comp.search(s) for s in self.stanzas_in)
+        if not await self._poll(found, secs, True):
+            raise asyncio.TimeoutError(f"no inbound stanza matching {rx!r}")
+        hit = next(m for s in self.stanzas_in if (m := comp.search(s)))
+        self.vars[name] = hit.group(1)
+        print(f"PEER bound {name}={self.vars[name]}", flush=True)
 
     async def act_clear(self, rest: str) -> None:
         self.msgs.clear()

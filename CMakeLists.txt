@@ -49,6 +49,8 @@ set(XMPP2_SOURCES
     src/data.c
     src/disco.c
     src/ext/carbons.c
+    src/ext/correct.c
+    src/ext/correct_cmd.c
     src/ext/ext.c
     src/ext/mam.c
     src/ext/mam_sync.c
@@ -82,10 +84,12 @@ set(XMPP2_SOURCES
 # Pure protocol logic (glib + xmlnode only), shared with the unit tests.
 add_library(x2core STATIC
     src/core/carbon_parse.c
+    src/core/corrlog.c
     src/core/dedup.c
     src/core/forward.c
     src/core/mam_proto.c
     src/core/receipt_parse.c
+    src/core/replace_parse.c
     src/core/sid.c
     src/core/smstate.c
     src/core/store.c
