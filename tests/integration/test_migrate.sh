@@ -137,11 +137,17 @@ for a in root.findall("account"):
                     enabled = int(st.text or 0)
     print("ACCT %s %s enabled=%d pw=%s alias=%s" % (
         txt("protocol"), txt("name"), enabled, txt("password"), txt("alias")))
+    # libpurple writes settings in hash table order, and stamps the avatar
+    # again whenever an account logs in: sort, and leave the stamp out
+    lines = []
     for s in a.findall("settings"):
         if s.get("ui"):
             continue
         for st in s.findall("setting"):
-            print("  set %s=%s" % (st.get("name"), st.text))
+            if st.get("name") != "buddy_icon_timestamp":
+                lines.append("  set %s=%s" % (st.get("name"), st.text))
+    for line in sorted(lines):
+        print(line)
     p = a.find("proxy")
     if p is not None:
         print("  proxy %s %s:%s %s/%s" % (
@@ -280,8 +286,8 @@ disconnect
 SCRIPT
 dump_accounts "$HUSERDIR/accounts.xml" >"$WORK/acc2.dump"
 dump_blist "$HUSERDIR/blist.xml" >"$WORK/bl2.dump"
-diff "$WORK/acc.dump" "$WORK/acc2.dump" >/dev/null || fail "accounts changed by the second run"
-diff "$WORK/bl.dump" "$WORK/bl2.dump" >/dev/null || fail "buddy list changed by the second run"
+diff -u "$WORK/acc.dump" "$WORK/acc2.dump" >&2 || fail "accounts changed by the second run"
+diff -u "$WORK/bl.dump" "$WORK/bl2.dump" >&2 || fail "buddy list changed by the second run"
 pass "second run creates and changes nothing (idempotent)"
 
 # --- 2b. the plugin action (Tools > Plugin Actions) --------------------------
