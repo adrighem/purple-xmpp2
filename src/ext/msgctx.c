@@ -42,7 +42,8 @@ x2_msg_peer_of(JabberStream *js, const char *jid, const char *type,
 
 	if (id->resource != NULL && id->node != NULL &&
 	    !purple_strequal(type, "groupchat") &&
-	    (xmlnode_get_child_with_namespace(msg, "x", X2_NS_MUC_USER) != NULL ||
+	    ((msg != NULL &&
+	      xmlnode_get_child_with_namespace(msg, "x", X2_NS_MUC_USER) != NULL) ||
 	     jabber_chat_find(js, id->node, id->domain) != NULL))
 		peer = g_strdup(jid);
 	else

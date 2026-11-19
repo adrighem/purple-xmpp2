@@ -16,7 +16,11 @@
 #define X2_NS_REPLACE "urn:xmpp:message-correct:0"
 #define X2_NS_OCCUPANT_ID "urn:xmpp:occupant-id:0"
 
-/** Prefix of the shown text of an accepted correction. */
+/**
+ * Prefix of the shown text of an accepted correction, in English.  core/ has
+ * no gettext: ext/correct.c passes the translation of this string (its
+ * literal there is the msgid) to x2_replace_mark_body().
+ */
 #define X2_REPLACE_MARKER "corrected: "
 
 /**
@@ -32,8 +36,9 @@ void x2_replace_add(xmlnode *message, const char *id);
 /**
  * Identity of the author of a message, for the XEP-0308 sender check.
  *
- * Groupchat: the XEP-0421 occupant-id ("occ:ID") when the room stamped one,
- * else the full JID (room/nick).  Anything else: the bare JID of @a from.
+ * Groupchat: the XEP-0421 occupant-id ("occ:ID") when the room stamped one
+ * and may be trusted, else the full JID (room/nick).  Anything else: the
+ * bare JID of @a from.
  *
  * @param from       The "from" of the message (of the sender, for carbons).
  * @param groupchat  TRUE for type='groupchat'.

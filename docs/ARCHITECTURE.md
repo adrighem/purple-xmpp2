@@ -151,7 +151,7 @@ src/
     statefile.c         persistence glue: path, debounce, account-removed
     receipts.c          XEP-0184
     markers.c           XEP-0333
-    peerutil.c          caps policy and notice line shared by receipts, markers
+    peerutil.c          caps policy, subscription gate, notice line (receipts, markers)
     correct.c           XEP-0308 inbound check, marker, outbound hook
     correct_cmd.c       /correct command
     upload.c            XEP-0363 (PurpleXfer glue)
@@ -160,6 +160,7 @@ src/
                              no connection, no UI. Unit tested.
     sid.c               XEP-0359 stanza-id (with by check) / origin-id
     forward.c           XEP-0297 unwrap, XEP-0203 delay parse
+    jid.c               bare-JID helpers (bare part, equality) used by the others
     carbon_parse.c      classify carbon, reject forged
     mam_proto.c         build query (form + RSM), parse <result>, <fin>
     dedup.c             bounded LRU set of message keys

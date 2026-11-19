@@ -331,15 +331,6 @@ test_queued_fate(void)
 	                X2_MAM_QUEUED_DELIVER);
 }
 
-static void
-test_bare_equal(void)
-{
-	g_assert_true(x2_mam_bare_equal(ME, ME));
-	g_assert_true(x2_mam_bare_equal(ME "/res/with/slash", ME));
-	g_assert_false(x2_mam_bare_equal("x" ME, ME));
-	g_assert_false(x2_mam_bare_equal(NULL, ME));
-}
-
 int
 main(int argc, char **argv)
 {
@@ -363,7 +354,6 @@ main(int argc, char **argv)
 	g_test_add_func("/mam/result/forged-queryid", test_result_forged_queryid);
 	g_test_add_func("/mam/result/forged-inner", test_result_forged_inner);
 	g_test_add_func("/mam/result/missing-parts", test_result_missing_parts);
-	g_test_add_func("/mam/bare-equal", test_bare_equal);
 	g_test_add_func("/mam/queued-fate", test_queued_fate);
 	return g_test_run();
 }

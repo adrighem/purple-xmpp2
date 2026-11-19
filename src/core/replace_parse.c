@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "replace_parse.h"
+#include "jid.h"
 
 #define X2_NS_XHTML_IM "http://jabber.org/protocol/xhtml-im"
 
@@ -37,17 +38,6 @@ x2_replace_add(xmlnode *message, const char *id)
 }
 
 char *
-x2_replace_bare(const char *jid)
-{
-	const char *slash;
-
-	if (jid == NULL || *jid == '\0')
-		return NULL;
-	slash = strchr(jid, '/');
-	return slash ? g_strndup(jid, slash - jid) : g_strdup(jid);
-}
-
-char *
 x2_replace_sender(const xmlnode *message, const char *from,
                   gboolean groupchat, gboolean trust_occupant_id)
 {
@@ -59,7 +49,7 @@ x2_replace_sender(const xmlnode *message, const char *from,
 	if (from == NULL || *from == '\0')
 		return NULL;
 	if (!groupchat)
-		return x2_replace_bare(from);
+		return x2_jid_bare(from);
 	if (!trust_occupant_id)
 		return g_strdup(from);
 

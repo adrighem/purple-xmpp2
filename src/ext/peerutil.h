@@ -22,9 +22,6 @@
  */
 gboolean x2_peer_wants(JabberStream *js, const char *jid, const char *ns);
 
-/** TRUE if @a jid is a member of a room we have joined. */
-gboolean x2_peer_is_occupant(JabberStream *js, const char *jid);
-
 /**
  * TRUE if the contact behind @a jid (full or bare) has a presence
  * subscription from us (JABBER_SUB_FROM), i.e. sees our presence.  Receipts

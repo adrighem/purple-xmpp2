@@ -95,7 +95,7 @@ void x2_msg_receive(JabberStream *js, xmlnode *packet);
 /**
  * The conversation key of @a jid (X2Msg::peer): the bare JID, or the full
  * JID of a room occupant for a private message (joined room, or the
- * muc#user hint in @a msg).  Free with g_free().
+ * muc#user hint in @a msg, which may be NULL).  Free with g_free().
  */
 char *x2_msg_peer_of(JabberStream *js, const char *jid, const char *type,
                      xmlnode *msg);

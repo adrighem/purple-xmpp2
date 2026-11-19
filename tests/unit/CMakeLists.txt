@@ -19,6 +19,7 @@ function(x2_unit_test name)
 endfunction()
 
 x2_unit_test(sid)
+x2_unit_test(jid)
 x2_unit_test(forward)
 x2_unit_test(dedup)
 x2_unit_test(carbon_parse)

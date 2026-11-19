@@ -10,23 +10,9 @@
 #include "conversation.h"
 
 #include "buddy.h"
-#include "chat.h"
+#include "ext/msgctx.h"
 #include "ext/peerutil.h"
 #include "jutil.h"
-
-gboolean
-x2_peer_is_occupant(JabberStream *js, const char *jid)
-{
-	JabberID *id = jabber_id_new(jid);
-	gboolean occupant;
-
-	if (id == NULL)
-		return FALSE;
-	occupant = id->node != NULL &&
-	           jabber_chat_find(js, id->node, id->domain) != NULL;
-	jabber_id_free(id);
-	return occupant;
-}
 
 gboolean
 x2_peer_sees_us(JabberStream *js, const char *jid)
@@ -45,11 +31,16 @@ x2_peer_wants(JabberStream *js, const char *jid, const char *ns)
 	JabberID *id;
 	JabberBuddy *jb;
 	JabberBuddyResource *jbr;
-	char *bare;
+	char *bare, *peer;
 	gboolean wants = TRUE;
 
-	if (x2_peer_is_occupant(js, jid))
+	/* a room occupant (private message) keeps its full JID as the peer */
+	peer = x2_msg_peer_of(js, jid, NULL, NULL);
+	if (peer == NULL || strchr(peer, '/') != NULL) {
+		g_free(peer);
 		return FALSE;
+	}
+	g_free(peer);
 
 	id = jabber_id_new(jid);
 	if (id == NULL)

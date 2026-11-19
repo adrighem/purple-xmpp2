@@ -66,23 +66,6 @@ correct_plugin_uninit(PurplePlugin *plugin)
 	jabber_remove_feature(NS_CORRECTION);
 }
 
-char *
-x2_correct_peer(JabberStream *js, const char *jid, gboolean groupchat)
-{
-	JabberID *id = jabber_id_new(jid);
-	char *peer;
-
-	if (id == NULL)
-		return NULL;
-	if (id->resource != NULL && id->node != NULL && !groupchat &&
-	    jabber_chat_find(js, id->node, id->domain) != NULL)
-		peer = g_strdup(jid);
-	else
-		peer = jabber_id_get_bare_jid(id);
-	jabber_id_free(id);
-	return peer;
-}
-
 /* Remembers the ids a sender may later refer to (id, origin-id, stanza-id) */
 static void
 record_ids(X2CorrLog *log, const X2Msg *m, const char *sender)
@@ -171,8 +154,8 @@ correct_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 		return;
 	}
 
-	peer = x2_correct_peer(js, xmlnode_get_attrib(message, "to"),
-	                       o->groupchat);
+	peer = x2_msg_peer_of(js, xmlnode_get_attrib(message, "to"),
+	                      xmlnode_get_attrib(message, "type"), message);
 	if (peer == NULL)
 		return;
 	x2_corrlog_set_last_sent(st->log, peer, o->id);

@@ -17,6 +17,7 @@
 #include "util.h"
 
 #include "ext/correct.h"
+#include "ext/msgctx.h"
 
 static PurpleCmdId cmd_id;
 
@@ -43,7 +44,8 @@ cmd_correct(PurpleConversation *conv, const gchar *cmd, gchar **args,
 	if (args[0] == NULL || *args[0] == '\0')
 		return fail(error, _("Usage: /correct TEXT"));
 
-	peer = x2_correct_peer(js, purple_conversation_get_name(conv), chat);
+	peer = x2_msg_peer_of(js, purple_conversation_get_name(conv),
+	                      chat ? "groupchat" : "chat", NULL);
 	last = peer ? x2_corrlog_last_sent(st->log, peer) : NULL;
 	g_free(peer);
 	if (last == NULL)

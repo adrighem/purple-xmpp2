@@ -19,6 +19,7 @@
 #include "signals.h"
 
 #include "core/dedup.h"
+#include "core/jid.h"
 #include "core/mam_proto.h"
 #include "core/sid.h"
 #include "ext/mam.h"
@@ -144,7 +145,6 @@ x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
 	char *ikey;
 	gboolean dup;
 
-	x2_mam_sync_kick(a);
 	/* The newest page is buffered until its <fin/>: an archive that sends
 	 * more than the max we asked for is forged or broken, and must neither
 	 * grow the buffer nor keep the watchdog from firing. */
@@ -158,6 +158,7 @@ x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
 		}
 		a->page_results++;
 	}
+	x2_mam_sync_kick(a);
 
 	/* (a room result was forced to groupchat by its check) */
 	if (!a->room && (purple_strequal(type, "groupchat") ||
@@ -170,7 +171,7 @@ x2_mam_inbound_result(X2MamArchive *a, X2Msg *m, xmlnode *inner,
 	/* In a room our own messages come back from our nick, and libpurple
 	 * marks them as sent by the nick (serv_got_chat_in()), as live. */
 	dir = !a->room &&
-	      x2_mam_bare_equal(xmlnode_get_attrib(inner, "from"), a->st->own)
+	      x2_jid_bare_equal(xmlnode_get_attrib(inner, "from"), a->st->own)
 	      ? X2_DIR_OUT : X2_DIR_IN;
 	x2_msg_set_inner(a->st->js, m, inner, X2_SRC_MAM, dir, a->jid);
 	/* The archive id is the stanza-id: the result comes from the archive

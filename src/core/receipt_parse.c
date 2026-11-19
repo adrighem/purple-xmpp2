@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "receipt_parse.h"
+#include "jid.h"
 
 static const struct {
 	X2MarkerType type;
@@ -164,14 +165,12 @@ x2_marker_new(const char *to, X2MarkerType type, const char *id)
 char *
 x2_ack_key(const char *jid, const char *id)
 {
-	const char *slash;
 	char *bare, *lower, *key;
 
 	g_return_val_if_fail(jid != NULL && id != NULL, NULL);
 
-	slash = strchr(jid, '/');
-	bare = slash ? g_strndup(jid, slash - jid) : g_strdup(jid);
-	lower = g_ascii_strdown(bare, -1);
+	bare = x2_jid_bare(jid);
+	lower = g_ascii_strdown(bare != NULL ? bare : "", -1);
 	key = g_strdup_printf("%s\x1f%s", lower, id);
 	g_free(lower);
 	g_free(bare);
