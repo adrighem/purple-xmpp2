@@ -238,6 +238,21 @@ mam_inbound(JabberStream *js, X2Msg *m)
 		return X2_CONSUMED;
 	}
 
+	/* Bodyless messages (chat states, receipts, markers, a room subject)
+	 * are not history: holding them back only delays them. */
+	if (a->phase == X2_MAM_SYNCING &&
+	    xmlnode_get_child(m->msg, "body") == NULL)
+		return X2_PASS;
+
+	if (a->phase == X2_MAM_SYNCING &&
+	    g_queue_get_length(&a->queue) >= X2_MAM_QUEUE_MAX) {
+		purple_debug_warning(X2_MAM_DEBUG, "catch-up queue full (%u)\n",
+		                     X2_MAM_QUEUE_MAX);
+		x2_mam_sync_finish(a, FALSE,
+		                   _("Message history may be incomplete: too many "
+		                     "messages arrived while it was fetched."));
+	}
+
 	if (a->phase == X2_MAM_SYNCING) {
 		d = x2_msg_dup(m);
 		if (d == NULL)

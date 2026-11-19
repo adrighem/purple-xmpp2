@@ -26,6 +26,10 @@
 #define X2_MAM_MAX_PAGES 20
 #define X2_MAM_ROOM_MAX_PAGES 10
 
+/* Live messages held back per archive while it syncs; one more ends the
+ * catch-up as incomplete (above the offline flood of a 2000-message cap) */
+#define X2_MAM_QUEUE_MAX 5000
+
 /* Seconds without a result or <fin/> before the archive goes LIVE anyway */
 #define X2_MAM_WATCHDOG_SECS 30
 

@@ -469,6 +469,10 @@ Ordering: Pidgin can only append to a conversation. While an archive is
 order after the last page, dedup applied at flush time. This also absorbs
 the XEP-0160 offline flood that Prosody delivers right after initial
 presence, because the account archive enters `SYNCING` in `pre_presence`.
+Messages without a `<body/>` (chat states, receipts, markers, a room
+subject) are not queued: they pass at once. The queue holds at most 5000
+messages per archive; one more ends the catch-up as incomplete (frozen
+cursor, "history incomplete" notice) and delivers the queue.
 
 Cursor updates: after every `<fin>` (cursor = `last`, timestamp = last
 delivered `ts`), and for live messages only once the archive is `LIVE`
