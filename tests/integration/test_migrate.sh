@@ -342,9 +342,8 @@ if command -v pidgin >/dev/null && command -v xvfb-run >/dev/null; then
 	(
 		export HOME="$PHOME" XDG_CONFIG_HOME="$PHOME/.config" \
 			XDG_DATA_HOME="$PHOME/.local/share" XDG_CACHE_HOME="$PHOME/.cache"
-		timeout 45 xvfb-run -a timeout 20 pidgin -n -d -c "$PCONF" \
-			>"$WORK/pidgin.log" 2>&1 || true
-	)
+		pidgin_xvfb 20 "$PCONF" "$WORK/pidgin.log"
+	) || fail "Pidgin did not exit"
 	grep -q "xmpp2-migrate.*asking to copy 2 account(s) (startup offer)" "$WORK/pidgin.log" ||
 		{ grep -i "migrate\|xmpp2" "$WORK/pidgin.log" | tail -20 >&2;
 		  fail "Pidgin did not make the offer"; }

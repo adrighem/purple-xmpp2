@@ -61,7 +61,7 @@ foreach(feature_test carbons carbons_off correct mam mam_bulk mam_muc
             ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_${feature_test}.sh)
     set_tests_properties(integration-${feature_test} PROPERTIES
         LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
-        ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>;XMPP2_TEST_HOOKS=${X2_TEST_HOOKS_ENV};XMPP2_TEST_HOOKS_BUILT=$<BOOL:${XMPP2_TEST_HOOKS}>")
+        ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>;XMPP2_TEST_HOOKS=${X2_TEST_HOOKS_ENV}")
 endforeach()
 # Receipts and markers tests run several harness sessions with settle delays.
 set_tests_properties(integration-receipts integration-markers

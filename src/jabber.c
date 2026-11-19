@@ -3056,8 +3056,12 @@ static PurpleCmdRet jabber_cmd_buzz(PurpleConversation *conv,
 	else
 		alias = who;
 
+	/* The attention type's own translated format, with one %s */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 	description =
 		g_strdup_printf(purple_attention_type_get_outgoing_desc(attn), alias);
+#pragma GCC diagnostic pop
 	purple_conversation_write(conv, NULL, description,
 		PURPLE_MESSAGE_NOTIFY | PURPLE_MESSAGE_SYSTEM, time(NULL));
 	g_free(description);

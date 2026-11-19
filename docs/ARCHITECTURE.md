@@ -325,6 +325,10 @@ Order of the inbound chain (registry order matters and is fixed):
    return `X2_DEFERRED` (ownership: see above). The
    queue is flushed to the UI (with dedup) on `LIVE`, on watchdog expiry and
    on stream teardown: a duplicate beats a lost message.
+   An archive result whose key (stanza-id or origin-id) matches an undelayed
+   message in the queue is dropped: a message archived after the catch-up
+   began but before the server ran the query comes both ways, and the live
+   copy is shown as it came, never flagged delayed.
 4. `correction`, `upload`, `receipts`, `markers` (table order): rewrite
    corrections, consume pure control messages (`<received/>`,
    `<displayed/>` without body).
@@ -383,7 +387,7 @@ category `xmpp2-mam`. Test hook (compiled in only with
 `cmake -DXMPP2_TEST_HOOKS=ON`, as in CI; release builds ignore the
 variable): with `XMPP2_TEST_MAM_STALL` set in the environment the query is
 built and logged but never sent, so the watchdog and teardown paths can be
-tested. ctest passes `XMPP2_TEST_HOOKS_BUILT` to the integration tests; the
+tested. ctest passes `XMPP2_TEST_HOOKS=1|0` to every test; the
 stall parts exit 77 (skipped) without it.
 
 Queries (`core/mam_proto.c`): `urn:xmpp:mam:2` form with optional `start`
@@ -754,7 +758,10 @@ Chosen: one GKeyFile per account at
 never share a file). The directory is created with
 `purple_build_dir(dir, 0700)`. Written atomically with `purple_util_write_data_to_file_absolute()`
 (temp file plus rename), debounced 2 s, flushed on disconnect and unload,
-deleted on the `account-removed` signal.
+deleted on the `account-removed` signal. Prpls load before
+`purple_accounts_init()` registers that signal, so `ext/mam.c` connects it
+from a zero timeout armed in `plugin_init` (it runs once the main loop
+does) or on the first stream, whichever comes first.
 
 ```
 [archive user@example.org]

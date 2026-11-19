@@ -87,8 +87,10 @@ gboolean _purple_network_set_common_socket_flags(int fd);
  * Most inherited strings are translated in Pidgin's own catalogs ("pidgin"
  * domain, bound by libpurple), so fall back to those for free.  dgettext()
  * returns its argument unchanged when there is no translation.
+ * G_GNUC_FORMAT: the compiler checks _("...%s") formats against their
+ * arguments (-Wformat=2, -Wformat-security), as with glib's _().
  */
-static inline const char *
+static inline const char * G_GNUC_FORMAT(1)
 x2_gettext(const char *msgid)
 {
 	const char *tr = dgettext(XMPP2_PACKAGE, msgid);

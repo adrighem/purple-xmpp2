@@ -166,3 +166,15 @@ disconnect
 SCRIPT
 grep -q '^cursor=' "$CSTATE" || fail "cloned account stored no cursor"
 pass "cursor-only first sync (option 0 and cloned account) (item 1)"
+
+# Removing the account deletes its state file ("account-removed" handler,
+# connected after the core registers the signal: no GLib-CRITICAL).
+HUSERDIR="$CUSERDIR" run_harness carol <<SCRIPT
+remove-account
+SCRIPT
+[[ ! -e "$CSTATE" ]] || fail "state file kept after the account was removed"
+# (other system prpls may log their own criticals: match ours only)
+if grep -q 'signal_connect_common' "$H_ERR"; then
+	fail "signal connected too early: $(grep -m1 signal_connect_common "$H_ERR")"
+fi
+pass "removing the account deletes its state file"

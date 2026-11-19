@@ -31,6 +31,8 @@
  *   pref s:NAME=V|i:NAME=N|b:NAME=0|1   set an account pref now
  *   buddy-add JID             add to the roster and subscribe
  *   quit                      stop (implicit at end of input)
+ *   remove-account            delete the account (purple_accounts_delete(),
+ *                             as the Accounts dialog does) and stop
  * Actions:
  *   send JID TEXT             send an IM
  *   join ROOM NICK            join a MUC, wait for chat-joined (20)
@@ -1167,6 +1169,11 @@ static void do_command(char *line)
 		arm(P_SLEEP, "sleep", atof(arg));
 	} else if (!strcmp(cmd, "quit")) {
 		finish(0);
+	} else if (!strcmp(cmd, "remove-account")) {
+		purple_accounts_delete(account);
+		account = NULL;
+		say(TRUE, "remove-account", NULL);
+		finish(0);
 	} else if (!strcmp(cmd, "pref")) {
 		set_pref(account, arg);
 		continue_ok("pref", arg);
@@ -1545,7 +1552,8 @@ int main(int argc, char **argv)
 	g_idle_add(next_command, NULL);
 	g_main_loop_run(loop);
 
-	purple_account_set_enabled(account, UI_ID, FALSE);
+	if (account != NULL)
+		purple_account_set_enabled(account, UI_ID, FALSE);
 	purple_core_quit();
 	if (tmpdir)
 		remove_tree(tmpdir);

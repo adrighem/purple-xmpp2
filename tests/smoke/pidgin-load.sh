@@ -37,10 +37,12 @@ export XDG_CONFIG_HOME="$WORK/home/.config"
 export XDG_DATA_HOME="$WORK/home/.local/share"
 export XDG_CACHE_HOME="$WORK/home/.cache"
 
-set +e
-timeout "$((RUN_SECS + 20))" xvfb-run -a \
-	timeout "$RUN_SECS" pidgin -n -d -c "$WORK/conf" >"$LOG" 2>&1
-set -e
+# shellcheck source=../integration/lib.sh
+source "$ROOT/tests/integration/lib.sh"
+pidgin_xvfb "$RUN_SECS" "$WORK/conf" "$LOG" || {
+	echo "FAIL: Pidgin did not exit" >&2
+	exit 1
+}
 
 fail() {
 	echo "FAIL: $*" >&2
@@ -55,11 +57,17 @@ fi
 if grep -q "cannot register existing type" "$LOG"; then
 	fail "GType registration clash with built-in prpl-jabber"
 fi
+# A signal connected before libpurple registers it (prpls load before
+# accounts_init() and friends) logs "signal_connect_common: should not be
+# reached" on every start. Pidgin routes GLib criticals to its debug log as
+# "g_log:". Fail on those and on criticals of our own functions (other
+# installed plugins may log theirs).
+if grep -E "signals: Something tried|g_log: .*(signal_connect_common|x2_|jabber_|xmpp2)" "$LOG"; then
+	fail "GLib-CRITICAL from xmpp2 during startup"
+fi
 echo "OK: pidgin probed and loaded $SO_NAME "
 
 # Confirm both protocol ids register side by side, using the headless harness.
-# shellcheck source=../integration/lib.sh
-source "$ROOT/tests/integration/lib.sh"
 if command -v gcc >/dev/null && ensure_harness 2>/dev/null; then
 	: >"$WORK/empty.script"
 	for id in "$PRPL" prpl-jabber; do
