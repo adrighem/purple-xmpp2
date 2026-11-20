@@ -18,6 +18,7 @@ BuildRequires:  pkgconfig(pidgin) >= 2.14
 BuildRequires:  pkgconfig(gtk+-2.0)
 BuildRequires:  libidn-devel
 Recommends:     pidgin
+Suggests:       (pidgin-xmpp2-ticks if pidgin)
 
 %description
 purple-xmpp2 is a third-party XMPP protocol plugin (prpl-xmpp2) for Pidgin
