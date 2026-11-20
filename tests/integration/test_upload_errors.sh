@@ -87,6 +87,17 @@ GOT="$(sed -n 's/^EV xfer-progress bytes=\([0-9]*\) .*/\1/p' "$H_OUT" | tail -1)
 stub_stop
 pass "413 answered while sending is reported, upload stopped after $GOT of $((20 * MIB)) bytes"
 
+# 3b. A "201 Created" before the body is complete is not a success.
+via_stub early201 early:201 <<SCRIPT
+connect 30
+upload-fail bob@localhost $WORK/mid.bin 20
+expect-debug cat=xmpp2-upload text=answered before the whole file was sent
+no-debug timeout=1 cat=xmpp2-upload text=upload done
+disconnect
+SCRIPT
+stub_stop
+pass "a 201 sent before the body is complete fails the upload"
+
 # 4. Backpressure: the stub takes 16 MiB/s. The 50 MiB file goes through with
 # the peak RSS flat, and the stub saw every byte.
 via_stub slow slow:$((16 * MIB)) <<SCRIPT

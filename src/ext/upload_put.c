@@ -183,6 +183,14 @@ put_read(X2UploadPut *put)
 		}
 		switch (x2_upload_resp_feed(&put->resp, tmp, (gsize)n)) {
 		case X2_UPLOAD_RESP_DONE:
+			if (!x2_upload_send_done(&put->send) &&
+			    x2_upload_status_class(put->resp.code) ==
+			        X2_UPLOAD_STATUS_OK) {
+				/* "stored" before the whole file was sent: it was not */
+				put_failf(put, "%s", _("the upload server answered before "
+					"the whole file was sent"));
+				return FALSE;
+			}
 			put_finish(put, put->resp.code, NULL);
 			return FALSE;
 		case X2_UPLOAD_RESP_BAD:
