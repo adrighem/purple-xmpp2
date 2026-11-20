@@ -108,6 +108,7 @@ add_library(x2core STATIC
     src/core/replace_parse.c
     src/core/migrate_map.c
     src/core/sid.c
+    src/core/smresume.c
     src/core/smstate.c
     src/core/store.c
     src/core/upload_http.c

@@ -172,6 +172,31 @@ x2_sm_state_requested(X2SmState *st)
 	st->requested = st->out;
 }
 
+X2SmResend
+x2_sm_state_resumed(X2SmState *st, guint32 h, guint *trimmed, GList **resend)
+{
+	GList *items = NULL, *l;
+
+	*resend = NULL;
+	g_return_val_if_fail(st != NULL, X2_SM_RESEND_INCOMPLETE);
+	if (!x2_sm_state_ack(st, h, trimmed))
+		return X2_SM_RESEND_H_TOO_HIGH;
+	/* Every unacked stanza must still be queued, with a copy. */
+	if (g_queue_get_length(&st->queue) != x2_sm_state_unacked(st))
+		return X2_SM_RESEND_INCOMPLETE;
+	for (l = st->queue.head; l != NULL; l = l->next) {
+		SmEntry *e = l->data;
+
+		if (e->item == NULL) {
+			g_list_free(items);
+			return X2_SM_RESEND_INCOMPLETE;
+		}
+		items = g_list_prepend(items, e->item);
+	}
+	*resend = g_list_reverse(items);
+	return X2_SM_RESEND_OK;
+}
+
 GList *
 x2_sm_state_take_queue(X2SmState *st)
 {
