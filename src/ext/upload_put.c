@@ -8,7 +8,7 @@
  * the socket: READ | WRITE while the request is being written, so an early
  * answer (413, 401) is seen at once, READ only afterwards.  A write moves at
  * most X2_UPLOAD_BURST bytes per main loop turn: head first, then chunks
- * read from the file, one buffer in all.  On EAGAIN the same buffer is
+ * read from the file, one buffer in all.  On EAGAIN or EINTR the same buffer is
  * offered again (GnuTLS insists on that).  Nothing here logs a URL or a
  * header.
  *
@@ -215,7 +215,7 @@ put_read(X2UploadPut *put)
 	for (;;) {
 		gssize n = put_recv(put, tmp, sizeof(tmp));
 
-		if (n < 0 && errno == EAGAIN)
+		if (n < 0 && x2_upload_io_retry(errno))
 			return TRUE;
 		if (n <= 0) {
 			if (put->write_failed)
@@ -304,7 +304,7 @@ put_write(X2UploadPut *put)
 			return FALSE;
 		n = put_send(put, put->buf + put->buf_off,
 			put->buf_len - put->buf_off);
-		if (n < 0 && errno == EAGAIN)
+		if (n < 0 && x2_upload_io_retry(errno))
 			return TRUE;
 		if (n < 0) {
 			/* the server may have answered and closed: look for it */

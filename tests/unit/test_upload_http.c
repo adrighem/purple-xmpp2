@@ -4,6 +4,7 @@
 /* Unit tests of core/upload_http.c: chunk accounting of the streaming PUT,
  * progress steps, the response status reader, and the TLS decision that
  * comes from the parsed PUT URL. */
+#include <errno.h>
 #include <string.h>
 #include <glib.h>
 
@@ -261,6 +262,17 @@ test_tls_decision_from_url(void)
 	g_assert_no_error(err);
 }
 
+static void
+test_io_retry(void)
+{
+	g_assert_true(x2_upload_io_retry(EAGAIN));
+	g_assert_true(x2_upload_io_retry(EWOULDBLOCK));
+	g_assert_true(x2_upload_io_retry(EINTR));
+	g_assert_false(x2_upload_io_retry(ECONNRESET));
+	g_assert_false(x2_upload_io_retry(EPIPE));
+	g_assert_false(x2_upload_io_retry(0));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -275,6 +287,7 @@ main(int argc, char **argv)
 	g_test_add_func("/upload-http/resp/status-line", test_resp_status_line);
 	g_test_add_func("/upload-http/resp/interim", test_resp_interim_skipped);
 	g_test_add_func("/upload-http/resp/garbage", test_resp_garbage_and_overlong);
+	g_test_add_func("/upload-http/io-retry", test_io_retry);
 	g_test_add_func("/upload-http/status-class", test_status_classes);
 	g_test_add_func("/upload-http/tls-decision", test_tls_decision_from_url);
 	return g_test_run();

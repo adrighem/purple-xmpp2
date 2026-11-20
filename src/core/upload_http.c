@@ -6,12 +6,19 @@
  */
 #include "upload_http.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "upload_proto.h"
 
 /* Interim responses tolerated before the final one */
 #define MAX_INTERIM 4
+
+gboolean
+x2_upload_io_retry(int err)
+{
+	return err == EAGAIN || err == EWOULDBLOCK || err == EINTR;
+}
 
 X2UploadStatusClass
 x2_upload_status_class(int code)
