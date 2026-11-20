@@ -114,31 +114,22 @@ x2_upload_disco_parse(const xmlnode *query, guint64 *max_size)
 	return TRUE;
 }
 
-guint64
-x2_upload_effective_max(guint64 service_max)
-{
-	if (service_max == 0 || service_max > X2_UPLOAD_HARD_CAP)
-		return X2_UPLOAD_HARD_CAP;
-	return service_max;
-}
-
 gboolean
 x2_upload_check_size(guint64 size, guint64 service_max, GError **error)
 {
-	guint64 max = x2_upload_effective_max(service_max);
-
 	if (size == 0) {
 		g_set_error_literal(error, X2_UPLOAD_ERROR, X2_UPLOAD_ERROR_SIZE,
 			"The file is empty");
 		return FALSE;
 	}
-	if (size > max) {
+	if (service_max != 0 && size > service_max) {
 		char *have = g_format_size_full(size, G_FORMAT_SIZE_IEC_UNITS);
-		char *want = g_format_size_full(max, G_FORMAT_SIZE_IEC_UNITS);
+		char *want = g_format_size_full(service_max,
+			G_FORMAT_SIZE_IEC_UNITS);
 
 		g_set_error(error, X2_UPLOAD_ERROR, X2_UPLOAD_ERROR_SIZE,
-			"The file is %s, but at most %s can be uploaded%s",
-			have, want, max == service_max ? " to this server" : "");
+			"The file is %s, but at most %s can be uploaded to this server",
+			have, want);
 		g_free(have);
 		g_free(want);
 		return FALSE;
