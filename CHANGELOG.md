@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.0](https://github.com/adrighem/purple-xmpp2/compare/v0.1.0...v0.2.0) (2026-11-20)
+
+
+### Features
+
+* **receipts:** emit xmpp2-sent-message for outgoing 1:1 messages ([598b066](https://github.com/adrighem/purple-xmpp2/commit/598b0665fa6f05e1898b190738c82fbb8879cda3))
+* **sm:** resumption policy and resend computation (M10 core) ([dbc2b52](https://github.com/adrighem/purple-xmpp2/commit/dbc2b52cf7a0e4cd3c27dbf5b0cce3889769b55d))
+* **sm:** XEP-0198 stream resumption as a silent reconnect (M10) ([7e56454](https://github.com/adrighem/purple-xmpp2/commit/7e564544065e41a6a6b316e6c0be32331cc00b74))
+* **ticks:** add pidgin-xmpp2-ticks, delivery and read ticks in Pidgin ([e26a48c](https://github.com/adrighem/purple-xmpp2/commit/e26a48c04c09f4df608b0023808f41163cb222f7))
+* **upload:** stream the file from disk with progress ([7f58f6f](https://github.com/adrighem/purple-xmpp2/commit/7f58f6feea1fe54b37c3ecdf0306e4cbf716d6d5))
+
+
+### Bug Fixes
+
+* **sm:** act on &lt;resumed/&gt; and &lt;failed/&gt; only after our &lt;resume/&gt; ([deeea2f](https://github.com/adrighem/purple-xmpp2/commit/deeea2f0e8dcafef00d40a6b0efc5f1956d061b0))
+* **sm:** log only a short prefix of the resume id ([176d624](https://github.com/adrighem/purple-xmpp2/commit/176d624a8dddc1f06ed82118848d129ec0507555))
+* **sm:** parse the h attribute strictly ([6f2c732](https://github.com/adrighem/purple-xmpp2/commit/6f2c73298fb48a745b4bb686d4261580503d8160))
+* **test:** make peer.py bursts wait for the server ([6fd853c](https://github.com/adrighem/purple-xmpp2/commit/6fd853c70ff65202c88674b06cace460b2c8448f))
+* **ticks:** name the room/nick conversation in xmpp2-sent-message ([5a025d9](https://github.com/adrighem/purple-xmpp2/commit/5a025d9699548a715afb7da9e02c74a6f6a0662f))
+* **upload:** a 2xx before the whole body was sent is a failure ([6162245](https://github.com/adrighem/purple-xmpp2/commit/61622451f4a8f206a60d7f3a8c9d99db38efcc61))
+* **upload:** fail a PUT that stalls for 60 seconds ([e0a165b](https://github.com/adrighem/purple-xmpp2/commit/e0a165b9f486c78bbcc269067a938222864de858))
+* **upload:** treat EINTR like EAGAIN in the PUT client ([aaa7cc5](https://github.com/adrighem/purple-xmpp2/commit/aaa7cc54a1aede943a6a643953b854cbcdfc292a))
+
 ## 0.1.0 (2026-11-20)
 
 
