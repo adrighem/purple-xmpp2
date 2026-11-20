@@ -7,7 +7,10 @@
  * Outgoing 1:1 messages ask for a receipt, live incoming requests (also
  * those delivered from the server's offline store) from contacts that can
  * see our presence are answered, incoming receipts for
- * messages we asked about raise the "xmpp2-receipt" signal.
+ * messages we asked about raise the "xmpp2-receipt" signal.  Every outgoing
+ * 1:1 message with a body raises "xmpp2-sent-message" first, so UI plugins
+ * can tie the id that receipts and markers name to the line about to be
+ * written (ARCHITECTURE 7.9).
  */
 #include "xmpp2_internal.h"
 
@@ -45,6 +48,15 @@ receipts_plugin_init(PurplePlugin *plugin)
 		purple_value_new(PURPLE_TYPE_SUBTYPE, PURPLE_SUBTYPE_ACCOUNT),
 		purple_value_new(PURPLE_TYPE_STRING),
 		purple_value_new(PURPLE_TYPE_STRING));
+
+	/* account, bare JID of the contact, id of the message, plain body;
+	 * emitted while sending, before the UI writes the sent line */
+	purple_signal_register(plugin, "xmpp2-sent-message",
+		purple_marshal_VOID__POINTER_POINTER_POINTER_POINTER, NULL, 4,
+		purple_value_new(PURPLE_TYPE_SUBTYPE, PURPLE_SUBTYPE_ACCOUNT),
+		purple_value_new(PURPLE_TYPE_STRING),
+		purple_value_new(PURPLE_TYPE_STRING),
+		purple_value_new(PURPLE_TYPE_STRING));
 }
 
 static void
@@ -76,6 +88,27 @@ receipts_stream_free(JabberStream *js)
 	x2_ext_set_priv(js, &x2_ext_receipts, NULL);
 }
 
+/* Tell UI plugins which id the line about to be written carries. */
+static void
+emit_sent_message(JabberStream *js, xmlnode *message, const char *to,
+                  const char *id)
+{
+	PurpleAccount *account = purple_connection_get_account(js->gc);
+	char *bare = jabber_get_bare_jid(to);
+	xmlnode *body_node = xmlnode_get_child(message, "body");
+	char *body = body_node ? xmlnode_get_data(body_node) : NULL;
+
+	if (bare != NULL && signal_plugin != NULL) {
+		purple_debug_info(LOG, "signal xmpp2-sent-message account=%s "
+		                  "peer=%s id=%s\n",
+		                  purple_account_get_username(account), bare, id);
+		purple_signal_emit(signal_plugin, "xmpp2-sent-message", account,
+		                   bare, id, body ? body : "");
+	}
+	g_free(body);
+	g_free(bare);
+}
+
 static void
 receipts_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 {
@@ -84,6 +117,7 @@ receipts_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 
 	if (o->groupchat || !o->has_body || o->id == NULL || to == NULL)
 		return;
+	emit_sent_message(js, message, to, o->id);
 	if (!x2_peer_wants(js, to, NS_RECEIPTS))
 		return;
 
