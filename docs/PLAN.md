@@ -359,7 +359,7 @@ Acceptance and evidence:
   the URL).
 Test server additions: `XMPP2_UPLOAD_LIMIT` (bytes) and `XMPP2_UPLOAD_HTTPS=1`
 for `tests/server/run.sh`; harness: `--proxy HOST:PORT`, `xfer-cancel-at`,
-`rss-reset`, `rss-check` (`tests/integration/xfer_ui.h`);
+`rss-reset`, `rss-check` (`tests/integration/harness_cmds_xfer.c`);
 `tests/integration/upload_stub.py` (CONNECT proxy that fakes the upload
 server).
 

@@ -86,7 +86,7 @@ default HTTP port + 1).
   proxy that fakes the upload server; the harness takes `--proxy HOST:PORT`)
   and `test_upload_https.sh` (Prosody with https upload URLs). The harness
   prints `EV xfer-progress` lines and `xfer-cancel-at BYTES [cancel|
-  disconnect|remove]` acts mid-transfer (`tests/integration/xfer_ui.h`).
+  disconnect|remove]` acts mid-transfer (`tests/integration/harness_cmds_xfer.c`).
 - `test_correct.sh` covers XEP-0308 (incoming marker, forged ids, rooms,
   `/correct`, caps, offline delivery).
 - `test_migrate.sh` (M8): seeds prpl-jabber accounts and a buddy list in the
