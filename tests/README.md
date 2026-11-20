@@ -81,7 +81,7 @@ default HTTP port + 1).
   server serves plain http, so they set `--pref b:allow_plain_http_upload=1`.
   The streaming upload has three more: `test_upload_stream.sh` (50 MiB sparse
   file, byte for byte, progress, peak RSS via `rss-reset`/`rss-check`),
-  `test_upload_errors.sh` (500, redirect, early 413, backpressure, cancel,
+  `test_upload_errors.sh` (500, redirect, early 413, backpressure, stall watchdog (hook), cancel,
   sign-off and account removal mid-upload, through `upload_stub.py`, a CONNECT
   proxy that fakes the upload server; the harness takes `--proxy HOST:PORT`)
   and `test_upload_https.sh` (Prosody with https upload URLs). The harness
@@ -98,7 +98,7 @@ default HTTP port + 1).
   stream management with the `sm_resume` option off (prpl-xmpp2 only, else
   exit 77); `test_sm_resume.sh` covers resumption as a silent reconnect
   (also needs `-DXMPP2_TEST_HOOKS=ON` for `XMPP2_TEST_SM_RESUME_DELAY_MS`;
-  it drops the hibernated session through `prosodyctl shell`). `test_mam_muc.sh`,
+  it drops the hibernated session through `prosodyctl shell`, and has a rogue server (`upload_stub.py --forge-resumed`) send a pre-SASL `<resumed/>`). `test_mam_muc.sh`,
   `test_mam_muc_bulk.sh` and `test_mam_muc_legacy.sh` (profile `nomam`)
   cover room history (PLAN M4); the state file's `[archive <room>]`
   section holds the room cursor.

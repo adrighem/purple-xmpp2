@@ -682,8 +682,15 @@ There is no limit of our own: the file is streamed, so the server's
    file that shrinks while it is read fails the upload ("the file changed").
    The logic that can be tested without sockets is in `core/upload_http.c`:
    the accounting of head, body and sent bytes (`X2UploadSend`), the progress
-   steps and the response parser. Not done: a timeout for a connection that stalls (the user can cancel in
-   the transfer window), and `Expect: 100-continue`.
+   steps and the response parser. EAGAIN and EINTR both mean "wait for the next
+   event" (`x2_upload_io_retry()`). An inactivity watchdog
+   (`purple_timeout_add_seconds()`, 60 s, `X2_UPLOAD_STALL_SECS`) is armed
+   when the PUT starts, re-armed after every byte sent or received and
+   removed with the PUT; when it fires the upload fails with "the upload
+   stalled" (a server that stops reading or never answers). Test hook
+   (`-DXMPP2_TEST_HOOKS=ON`): `XMPP2_TEST_UPLOAD_STALL_SECS` shortens it
+   (`test_upload_errors.sh`, stall mode of `upload_stub.py`). Not done:
+   `Expect: 100-continue`.
 4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
    `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
    (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1
@@ -711,8 +718,11 @@ the stream still shows the slot IQ, as for any stanza.
 Memory: one 64 KiB buffer, the request head and the 16 KiB response window,
 independent of the file size (the integration tests upload 50 MiB with a peak
 RSS growth below 16 MiB, in practice a few hundred kB). The file is read with
-blocking `fread()` calls of one chunk each, so a file on a stalled network
-file system blocks the UI for that read. In-flight uploads live in the
+a blocking `fread()` of one 64 KiB chunk per write, on the main loop, so a
+slow disk or a file on a stalled network file system stalls the UI for that
+read (the watchdog above cannot help: it runs on the same loop). Reading in
+a thread would remove this; not done for v0.2.0 (listed in the README
+limitations). In-flight uploads live in the
 module's per-stream state (not in `js->file_transfers`, whose entries the SI
 code casts to its own struct) and are cancelled in the `stream_closing`
 hook, while `js->iq_callbacks` still exists (a slot IQ callback is removed
@@ -761,8 +771,11 @@ M9 (done) fixes 2 to 5 (M10 fixes 1, below), contained in
   so an ack trims exactly the stanzas in `(acked, h]` even after the queue
   overflowed. An `h` beyond what was sent ends the stream with
   `handled-count-too-high` and a connection error.
-- The queue is bounded at 1000 stanzas; overflow evicts the oldest and is
-  counted ("untracked" in the debug log).
+- The queue is bounded at 1000 stanzas (`SM_MAX_QUEUE`), counting every
+  stanza kind (IQs and presence as well as messages); overflow evicts the
+  oldest and is counted ("untracked" in the debug log). That is the memory
+  bound: 1000 copied `xmlnode` trees per account, whatever their size, until
+  the server acks them (about every 5 stanzas or 2 s).
 - `<r/>` goes out after 5 unrequested stanzas or 2 s after the last stanza
   (idle timer), only once `<enabled/>` arrived; a server `<r/>` is answered
   at once. A 20 message burst costs 4 `<r/>` instead of 20.
@@ -809,6 +822,20 @@ does not send again after a resume, so resumption happens inside one
   post-auth `<stream:features/>` go to `jabber_sm_resume_features()`: with
   SM offered it sends `<resume previd h/>` (our inbound count) instead of a
   bind; without SM it gives up.
+- `<enabled location=.../>` is parsed and logged but deliberately ignored:
+  a resumption always reconnects to the configured server (the normal
+  connect path, domain certificate check), never to a host the server
+  names, which would let a compromised or spoofed `<enabled/>` redirect the
+  stream and the credentials of the SASL exchange.
+- `<resumed/>` and `<failed/>` are acted on only as the answer to a
+  `<resume/>` that this stream sent (`resume_sent`) and only once SASL is
+  done (`x2_sm_resume_reply_ok()`); a `<resumed/>` at any other time, in
+  particular before authentication, is a protocol error and disconnects
+  (`integration-sm_resume` has a rogue server for it). `h` of `<resumed/>`,
+  `<a/>` and `<failed/>` is parsed strictly (`x2_sm_parse_h()`: decimal
+  digits, 0..2^32-1; anything else is a protocol error, for `<failed/>` the
+  `h` is ignored). The resume id is a session secret: the debug log shows
+  only its first four characters (`x2_sm_id_log()`).
 - `<resumed h/>`: `h` must match `previd` and must not exceed what was sent
   (modulo 2^32). The queue is trimmed to `h`, the rest (stanzas lost in
   flight, then those held during the gap) is written again in order with
@@ -872,6 +899,16 @@ and emits `sent-im-msg` at the end:
    suppressed the display). Because pending never survives to the next main
    loop iteration, a sent line written later without a send (a carbon of our
    other device, a `serv_got_im()` echo) is never tagged with a stale id.
+
+Assumptions of the correlation. It relies on libpurple's call order
+(`serv_send_im()` before `purple_conv_im_write()` inside one `common_send()`
+call stack): a libpurple that reorders them, or a UI that writes the line
+elsewhere, breaks it silently (no tick, never a wrong one: the pending id
+lives only until the end of that call stack). There is one pending slot, so
+a plugin that sends several messages from one call stack ticks only the
+last whose line is written. The same holds for OTR-style plugins that turn
+one user line into several stanzas (fragments, key exchange): only the last
+id gets the line, the others have none and never tick.
 
 Updates. `xmpp2-receipt` gives delivered, `xmpp2-marker` gives delivered for
 `received` and displayed for `displayed` or `acknowledged`; a state never

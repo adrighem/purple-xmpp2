@@ -24,7 +24,7 @@ the server archive and shows it in the right conversation, in order, once.
 | Everything the built-in XMPP plugin does, except the dropped parts below | | Inherited (forked from Pidgin 2.14.14) |
 | Message archive catch-up | XEP-0313 | 1:1 chats and group chats. Offline and other-device messages appear on login with their original time; room history on join comes from the room archive instead of replayed legacy history |
 | Message carbons | XEP-0280 | Messages you send or receive on other devices show up here |
-| Stream management | XEP-0198 | Batched acks, no blind resend of unacked messages. Since v0.2: after a network drop the session is resumed silently (the account stays online, rooms stay joined, nothing is lost or doubled); if the server cannot resume, unacked messages are reported and the normal reconnect with archive catch-up follows |
+| Stream management | XEP-0198 | Batched acks, no blind resend of unacked messages. Since v0.2: after a network drop the session is resumed silently (the account stays online, rooms stay joined, unacked messages are resent or reported); if the server cannot resume, unacked messages are reported and the normal reconnect with archive catch-up follows |
 | HTTP file upload | XEP-0363 | Used for sending files; falls back to SI file transfer when the server has no upload service |
 | Delivery receipts | XEP-0184 | Sent and received; optional notice line, signal `xmpp2-receipt` |
 | Chat markers | XEP-0333 | 1:1 chats: `displayed` is sent when you focus the conversation; signal `xmpp2-marker` |
@@ -84,8 +84,10 @@ transfer proxies, custom smileys), the Advanced tab has:
 - A corrected message appears as a new line, not an in-place edit.
 - File upload needs a server with XEP-0363 over `https` (or the opt-in above).
   The file is streamed from disk with progress in the transfer window; the
-  server's size limit is checked before sending. An upload that stalls has no
-  timeout, cancel it in the transfer window.
+  server's size limit is checked before sending. An upload that moves no data
+  for 60 seconds fails; you can also cancel it in the transfer window. The file
+  is read with a blocking `fread()` per 64 KiB chunk, so a file on a very slow
+  or stalled disk or network share can stall the Pidgin UI during that read.
 - No OMEMO or other end-to-end encryption, no message retraction, reactions, or
   replies yet.
 - Dropped from the fork: Google Talk extensions, Jingle (voice and video), BOSH,
