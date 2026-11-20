@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Manage the throwaway Prosody test server (podman).
-# Usage: [XMPP2_SERVER_PROFILE=full|nocarbons|nomam|noupload|a,b] run.sh start|stop|reset|status|logs|cert|cert
+# Usage: [XMPP2_SERVER_PROFILE=full|nocarbons|nomam|noupload|a,b] run.sh start|stop|reset|status|logs|cert
+# Upload options: XMPP2_UPLOAD_LIMIT=BYTES (max-file-size, default 10 MiB),
+# XMPP2_UPLOAD_HTTPS=1 (upload URLs are https on XMPP2_TEST_HTTPS_PORT).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,6 +10,9 @@ NAME="${XMPP2_TEST_CONTAINER:-xmpp2-test-prosody}"
 IMAGE="localhost/xmpp2-test-prosody"
 C2S_PORT="${XMPP2_TEST_C2S_PORT:-15222}"
 HTTP_PORT="${XMPP2_TEST_HTTP_PORT:-15280}"
+HTTPS_PORT="${XMPP2_TEST_HTTPS_PORT:-$((HTTP_PORT + 1))}"
+UPLOAD_LIMIT="${XMPP2_UPLOAD_LIMIT:-}"
+UPLOAD_HTTPS="${XMPP2_UPLOAD_HTTPS:-}"
 PASSWORD="${XMPP2_TEST_PASSWORD:-secret}"
 PROFILE="${XMPP2_SERVER_PROFILE:-full}"
 USERS=(alice bob carol)
@@ -47,18 +52,26 @@ start() {
 	if running; then
 		local cur
 		cur="$(podman inspect -f '{{index .Config.Labels "xmpp2.profile"}}' "$NAME")"
-		if [[ "$cur" == "$PROFILE" ]]; then
+		if [[ "$cur" == "$PROFILE/$UPLOAD_LIMIT/$UPLOAD_HTTPS" ]]; then
 			info
 			return 0
 		fi
 	fi
 	podman rm -f "$NAME" >/dev/null 2>&1 || true
 	build
+	local extra=()
+	if [[ -n "$UPLOAD_LIMIT" ]]; then
+		extra+=(-e "XMPP2_UPLOAD_LIMIT=${UPLOAD_LIMIT}")
+	fi
+	if [[ -n "$UPLOAD_HTTPS" ]]; then
+		extra+=(-e "XMPP2_HTTPS_PORT=${HTTPS_PORT}" -p "127.0.0.1:${HTTPS_PORT}:5281")
+	fi
 	podman run -d --name "$NAME" \
-		--label "xmpp2.profile=${PROFILE}" \
+		--label "xmpp2.profile=${PROFILE}/${UPLOAD_LIMIT}/${UPLOAD_HTTPS}" \
 		-e "XMPP2_DISABLE=${DISABLE}" -e "XMPP2_HTTP_PORT=${HTTP_PORT}" \
 		-p "127.0.0.1:${C2S_PORT}:5222" \
 		-p "127.0.0.1:${HTTP_PORT}:5280" \
+		"${extra[@]}" \
 		"$IMAGE" >/dev/null
 	wait_ready
 	local u
@@ -79,6 +92,7 @@ info() {
 	echo "XMPP_DOMAIN=localhost"
 	echo "XMPP_C2S_PORT=${C2S_PORT}"
 	echo "XMPP_HTTP_PORT=${HTTP_PORT}"
+	echo "XMPP_HTTPS_PORT=${HTTPS_PORT}"
 	echo "XMPP_MUC=conference.localhost"
 	echo "XMPP_UPLOAD=upload.localhost"
 	echo "XMPP_USERS=\"${USERS[*]}\""

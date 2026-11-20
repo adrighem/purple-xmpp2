@@ -32,6 +32,15 @@
  *   correct JID TEXT          shorthand for: cmd JID correct TEXT
  *   upload JID PATH [SECS]    send a file, wait for xfer completion (30)
  *   upload-fail JID PATH [SECS]  same, but the xfer must be cancelled
+ *   xfer-cancel-at BYTES [cancel|disconnect|remove]
+ *                             once the next transfer reported BYTES sent, from
+ *                             the main loop: cancel it (like the transfer
+ *                             window's Cancel button), sign the account off,
+ *                             or delete the account; use with upload-fail
+ *   rss-reset                 reset the peak RSS (VmHWM), remember the RSS
+ *   rss-check DELTA_MB        FAIL if the peak RSS grew by more since rss-reset
+ *                             (progress is printed as "EV xfer-progress
+ *                             bytes=N size=M")
  *   upload-drop JID PATH [SECS]  start an upload and drop (as "drop") in
  *                             the same main loop turn, so the slot IQ is in
  *                             flight; the xfer must be cancelled
@@ -120,6 +129,10 @@ static const Command commands[] = {
 	{ "upload", cmd_upload, "JID PATH [SECS]  send a file, wait for completion (30)" },
 	{ "upload-fail", cmd_upload, "JID PATH [SECS]  same, but the xfer must be cancelled" },
 	{ "upload-drop", cmd_upload, "JID PATH [SECS]  start an upload and drop; must be cancelled" },
+	{ "xfer-cancel-at", cmd_xfer_cancel_at,
+	  "BYTES [cancel|disconnect|remove]  at BYTES sent, cancel the next transfer, sign off or delete the account" },
+	{ "rss-reset", cmd_rss_reset, "  reset the peak RSS (VmHWM), remember the RSS" },
+	{ "rss-check", cmd_rss_check, "DELTA_MB  FAIL if the peak RSS grew by more since rss-reset" },
 	/* requests and accounts */
 	{ "answer", cmd_answer, "N [SECS]  press button N of the next request (10)" },
 	{ "no-request", cmd_no_request, "[SECS]  no request arrives within SECS (3)" },

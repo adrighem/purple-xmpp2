@@ -11,6 +11,7 @@
  *       --user alice@localhost/harness --password secret \
  *       --host 127.0.0.1 --port 15222 [--pref s:name=val|i:name=1|b:name=1]
  *       [--script FILE] [--userdir DIR] [--log txt] [--trust-cert FILE] [--debug]
+ *       [--proxy HOST:PORT]
  *       [--libpref s:|i:|b:/pref/path=VAL]
  *
  *   --userdir DIR     persistent libpurple user dir (state, logs, accounts and
@@ -19,6 +20,8 @@
  *   --log txt         enable IM and chat logging in text format.
  *   --trust-cert      pre-seed the tls_peers pool with a PEM for the account
  *                     domain and --host, so a self-signed cert is accepted.
+ *   --proxy HOST:PORT use this HTTP (CONNECT) proxy for the account (c2s and
+ *                     file upload); also installs the transfer UI ops.
  *   --debug           copy libpurple debug to stderr (always captured internally).
  *
  *
@@ -167,7 +170,8 @@ static void print_usage(FILE *fp)
 {
 	fprintf(fp, "Usage: xmpp2-harness --user JID [--password PW] [--prpl ID] [--plugin-dir DIR]\n"
 	        "    [--host H] [--port N] [--pref s:|i:|b:name=V] [--libpref s:|i:|b:/path=V]\n"
-	        "    [--script FILE] [--userdir DIR] [--log txt] [--trust-cert FILE] [--debug] [--help]\n"
+	        "    [--script FILE] [--userdir DIR] [--log txt] [--trust-cert FILE] [--proxy HOST:PORT]\n"
+	        "    [--debug] [--help]\n"
 	        "The password may also come from XMPP_PASSWORD. Without --script, commands are\n"
 	        "read from stdin. Exit 0 on success, 1 on the first FAIL, 2 on setup errors.\n\n");
 	harness_print_help(fp);
@@ -176,7 +180,7 @@ static void print_usage(FILE *fp)
 int main(int argc, char **argv)
 {
 	const char *prpl = "prpl-jabber", *user = NULL, *pass = getenv("XMPP_PASSWORD");
-	const char *trust = NULL, *log_fmt = NULL;
+	const char *trust = NULL, *log_fmt = NULL, *proxy = NULL;
 	const char *host = NULL, *script_path = NULL, *plugin_dir = NULL, *user_dir = NULL;
 	int port = 0, i;
 	char *tmpdir = NULL;
@@ -204,6 +208,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(a, "--userdir") || !strcmp(a, "--user-dir")) { user_dir = v; i++; }
 		else if (!strcmp(a, "--log")) { log_fmt = v; i++; }
 		else if (!strcmp(a, "--trust-cert")) { trust = v; i++; }
+		else if (!strcmp(a, "--proxy")) { proxy = v; i++; }
 		else if (!strcmp(a, "--pref")) { g_ptr_array_add(prefs, (gpointer)v); i++; }
 		else if (!strcmp(a, "--libpref")) { g_ptr_array_add(libprefs, (gpointer)v); i++; }
 		else { fprintf(stderr, "unknown option %s\n", a); return 2; }
@@ -283,6 +288,7 @@ int main(int argc, char **argv)
 	if (port)
 		purple_account_set_int(account, "port", port);
 	c2s_port = port ? port : 5222;
+	harness_xfer_init(proxy);
 	for (i = 0; i < (int)prefs->len; i++)
 		set_pref(account, g_ptr_array_index(prefs, i));
 
