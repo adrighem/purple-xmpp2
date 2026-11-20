@@ -14,6 +14,8 @@ server (the PUT of an upload slot), selected by --mode:
                 the client is still sending (a server that rejects at once)
   slow:BPS      read the body at BPS bytes per second (backpressure), then
                 answer 201
+  stall:BYTES   read BYTES of the body, then neither read nor answer (a
+                hung server) until the client goes away
 
 With --forge-resumed the first c2s connection is tunnelled and every later
 one is answered by a rogue server that sends a stream header and a
@@ -78,6 +80,9 @@ async def serve_put(reader, writer, mode):
             await asyncio.sleep(0.2)
             return
         while got < length:
+            if kind == "stall" and got >= int(arg):
+                await asyncio.sleep(600)
+                return
             chunk = await reader.read(min(65536, length - got))
             if not chunk:
                 return

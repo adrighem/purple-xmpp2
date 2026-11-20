@@ -11,6 +11,10 @@
  * read from the file, one buffer in all.  On EAGAIN the same buffer is
  * offered again (GnuTLS insists on that).  Nothing here logs a URL or a
  * header.
+ *
+ * A watchdog fails the PUT when no byte moves (either way) for
+ * X2_UPLOAD_STALL_SECS: a server that stops reading or never answers would
+ * otherwise leave the transfer pending until the account goes away.
  */
 #include "xmpp2_internal.h"
 
@@ -32,6 +36,15 @@
 /* Bytes written per main loop turn, so the UI stays responsive */
 #define X2_UPLOAD_BURST (256 * 1024)
 
+/* No byte sent or received for this long: the PUT has stalled */
+#define X2_UPLOAD_STALL_SECS 60
+
+#ifdef XMPP2_TEST_HOOKS
+/* Test hook (cmake -DXMPP2_TEST_HOOKS=ON only): the stall timeout in
+ * seconds (tests/integration/test_upload_errors.sh). */
+#define X2_UPLOAD_STALL_ENV "XMPP2_TEST_UPLOAD_STALL_SECS"
+#endif
+
 struct X2UploadPut {
 	X2UploadPutProgress progress_cb;
 	X2UploadPutDone done_cb;
@@ -43,6 +56,8 @@ struct X2UploadPut {
 	PurpleSslConnection *ssl;         /* https: connecting or connected */
 	int fd;                           /* -1 until connected */
 	guint watcher;
+	guint stall_timer;                /* inactivity watchdog */
+	guint stall_secs;
 
 	FILE *fp;
 	char *buf;                        /* head, then body chunks */
@@ -65,6 +80,8 @@ put_destroy(X2UploadPut *put)
 {
 	if (put->watcher != 0)
 		purple_input_remove(put->watcher);
+	if (put->stall_timer != 0)
+		purple_timeout_remove(put->stall_timer);
 	if (put->ssl != NULL)
 		purple_ssl_close(put->ssl);  /* closes the fd as well */
 	else if (put->connect != NULL)
@@ -127,6 +144,39 @@ put_failf(X2UploadPut *put, const char *fmt, ...)
 	g_free(msg);
 }
 
+static gboolean
+put_stall_cb(gpointer data)
+{
+	X2UploadPut *put = data;
+
+	put->stall_timer = 0;
+	put_failf(put, _("the upload stalled: no data moved for %u seconds"),
+		put->stall_secs);
+	return FALSE;
+}
+
+/* Arms the watchdog; again after every byte that moved. */
+static void
+put_touch(X2UploadPut *put)
+{
+	if (put->stall_timer != 0)
+		purple_timeout_remove(put->stall_timer);
+	put->stall_timer = purple_timeout_add_seconds(put->stall_secs,
+		put_stall_cb, put);
+}
+
+static guint
+put_stall_secs(void)
+{
+#ifdef XMPP2_TEST_HOOKS
+	const char *env = g_getenv(X2_UPLOAD_STALL_ENV);
+
+	if (env != NULL && atoi(env) > 0)
+		return (guint)atoi(env);
+#endif
+	return X2_UPLOAD_STALL_SECS;
+}
+
 static gssize
 put_recv(X2UploadPut *put, void *buf, gsize len)
 {
@@ -181,6 +231,7 @@ put_read(X2UploadPut *put)
 					_("before the upload was complete"));
 			return FALSE;
 		}
+		put_touch(put);
 		switch (x2_upload_resp_feed(&put->resp, tmp, (gsize)n)) {
 		case X2_UPLOAD_RESP_DONE:
 			if (!x2_upload_send_done(&put->send) &&
@@ -262,6 +313,7 @@ put_write(X2UploadPut *put)
 			put_watch(put, PURPLE_INPUT_READ);
 			return put_read(put);
 		}
+		put_touch(put);
 		put->buf_off += (gsize)n;
 		burst += (gsize)n;
 		x2_upload_send_did_write(&put->send, (gsize)n);
@@ -360,6 +412,7 @@ x2_upload_put_start(PurpleAccount *account, const X2UploadSlot *slot,
 	put->host = g_strdup(u->host);
 	put->https = u->https;
 	put->fd = -1;
+	put->stall_secs = put_stall_secs();
 
 	put->fp = g_fopen(path, "rb");
 	if (put->fp == NULL) {
@@ -378,6 +431,7 @@ x2_upload_put_start(PurpleAccount *account, const X2UploadSlot *slot,
 	g_free(head);
 	x2_upload_resp_init(&put->resp);
 
+	put_touch(put);
 	put->starting = TRUE;
 	if (u->https)
 		put->ssl = purple_ssl_connect(account, u->host, u->port,
