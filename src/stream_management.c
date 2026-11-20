@@ -398,6 +398,21 @@ sm_handle_ack(JabberStream *js, SmSession *s, xmlnode *packet)
 	                  trimmed, x2_sm_state_unacked(s->st));
 }
 
+/* <resumed/> or <failed/> we did not ask for: protocol error, disconnect. */
+static void
+sm_unexpected_reply(JabberStream *js, const char *name)
+{
+	const char *why = _("Unexpected stream management reply from the server");
+
+	purple_debug_error(SM_DBG, "<%s/> without a <resume/> sent on this "
+	                   "authenticated stream: protocol error\n", name);
+	if (js->sm_resume != NULL)
+		jabber_sm_resume_give_up(js, why);
+	else
+		purple_connection_error_reason(js->gc,
+			PURPLE_CONNECTION_ERROR_NETWORK_ERROR, why);
+}
+
 /* Processes incoming NS_STREAM_MANAGEMENT packets. */
 void
 jabber_sm_process_packet(JabberStream *js, xmlnode *packet)
@@ -409,9 +424,17 @@ jabber_sm_process_packet(JabberStream *js, xmlnode *packet)
 		purple_debug_error(SM_DBG, "<%s/> outside a session ignored\n", name);
 		return;
 	}
+	/* An answer to <resume/> is only valid after we sent one; a forged
+	 * <resumed/> before SASL must not skip authentication. */
+	if ((purple_strequal(name, "resumed")
+	     || (purple_strequal(name, "failed") && js->sm_resume != NULL))
+	    && !jabber_sm_resume_reply_ok(js)) {
+		sm_unexpected_reply(js, name);
+		return;
+	}
 	if (purple_strequal(name, "enabled"))
 		sm_handle_enabled(js, s, packet);
-	else if (purple_strequal(name, "resumed") && js->sm_resume != NULL)
+	else if (purple_strequal(name, "resumed"))
 		jabber_sm_resume_resumed(js, packet);
 	else if (purple_strequal(name, "failed") && js->sm_resume != NULL)
 		jabber_sm_resume_failed(js, packet);

@@ -67,4 +67,11 @@ gint x2_sm_resume_failed(X2SmResume *r, gint64 now);
 /** Resumed, or gave up: back to IDLE. */
 void x2_sm_resume_reset(X2SmResume *r);
 
+/**
+ * May <resumed/> or <failed/> be acted on now?  Only as the answer to a
+ * <resume/> that this stream sent, and only after SASL: anything else is a
+ * protocol error (a <resumed/> before authentication must never skip SASL).
+ */
+gboolean x2_sm_resume_reply_ok(gboolean resume_sent, gboolean post_auth);
+
 #endif /* XMPP2_CORE_SMRESUME_H_ */

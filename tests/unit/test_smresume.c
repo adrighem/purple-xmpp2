@@ -90,6 +90,16 @@ test_failed_needs_attempt(void)
 	g_assert_cmpint(r.phase, ==, X2_SM_RESUME_IDLE);
 }
 
+static void
+test_reply_ok(void)
+{
+	/* only after our <resume/> and after SASL */
+	g_assert_true(x2_sm_resume_reply_ok(TRUE, TRUE));
+	g_assert_false(x2_sm_resume_reply_ok(FALSE, TRUE));
+	g_assert_false(x2_sm_resume_reply_ok(TRUE, FALSE));
+	g_assert_false(x2_sm_resume_reply_ok(FALSE, FALSE));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -100,5 +110,6 @@ main(int argc, char **argv)
 	g_test_add_func("/smresume/window", test_window_from_max);
 	g_test_add_func("/smresume/failed-needs-attempt",
 	                test_failed_needs_attempt);
+	g_test_add_func("/smresume/reply-ok", test_reply_ok);
 	return g_test_run();
 }

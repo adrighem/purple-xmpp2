@@ -42,6 +42,7 @@ struct _JabberSmResume {
 	guint attempt_timer;	/* the running attempt's timeout */
 	gint next_delay;	/* ms, for the timer after the teardown */
 	gboolean gave_up;	/* connection error raised, waiting for close */
+	gboolean resume_sent;	/* <resume/> went out on this stream */
 };
 
 static gint64
@@ -129,6 +130,7 @@ attempt_cb(gpointer data)
 	purple_debug_info(SM_DBG, "resume attempt %u of %u: reconnecting\n",
 	                  r->policy.attempts, X2_SM_RESUME_ATTEMPTS);
 	js->transport_down = FALSE;
+	r->resume_sent = FALSE;
 	r->attempt_timer = purple_timeout_add(X2_SM_RESUME_ATTEMPT_TIMEOUT_MS,
 	                                      attempt_timeout_cb, js);
 	/* May fail at once and come back through jabber_stream_lost(). */
@@ -240,9 +242,20 @@ jabber_sm_send_resume(JabberStream *js)
 	xmlnode_set_attrib(resume, "h", h);
 	purple_debug_info(SM_DBG, "resume previd=%s h=%s, %u unacked\n", id, h,
 	                  x2_sm_state_unacked(st));
+	js->sm_resume->resume_sent = TRUE;
 	jabber_send(js, resume);
 	xmlnode_free(resume);
 	g_free(h);
+}
+
+gboolean
+jabber_sm_resume_reply_ok(JabberStream *js)
+{
+	JabberSmResume *r = js->sm_resume;
+
+	return r != NULL && !r->gave_up
+	       && x2_sm_resume_reply_ok(r->resume_sent,
+	                                js->state == JABBER_STREAM_POST_AUTH);
 }
 
 void

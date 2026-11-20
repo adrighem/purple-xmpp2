@@ -10,6 +10,8 @@
 #    alice leave the room, the server does not hibernate it).
 # 3. The server forgot the session: <failed/>, connection error, the next
 #    login's MAM catch-up brings the gap message exactly once.
+# 4. A rogue server answers the resume attempt with <resumed/> before SASL:
+#    refused as a protocol error (no skipped authentication, no "resumed").
 # Needs PRPL=prpl-xmpp2 and -DXMPP2_TEST_HOOKS=ON (resume delay hook).
 set -euo pipefail
 
@@ -128,3 +130,28 @@ wait "$KILL_PID" || { cat "$WORK/kill.log"; fail "could not drop the hibernated 
 grep -q "connection error" "$H_ERR" || fail "failed resume did not raise a connection error"
 wait "$BOB_PID" || { cat "$WORK/bob3.log"; fail "bob peer failed"; }
 pass "failed resume: connection error, unacked reported, MAM fills the gap once"
+
+# 4. A rogue server (upload_stub.py --forge-resumed) answers the resume
+# attempt with a <resumed/> before any SASL: it must be refused as a protocol
+# error, never acted on (the unit test of x2_sm_resume_reply_ok has the rest).
+STUB_LOG="$WORK/stub-forge.log"
+"$VENV/bin/python" "$HERE/upload_stub.py" --forge-resumed >"$STUB_LOG" 2>&1 &
+STUB_PID=$!
+wait_for_line "$STUB_LOG" "^PORT " 10 || { cat "$STUB_LOG"; fail "stub did not start"; }
+STUB_PORT="$(sed -n 's/^PORT //p' "$STUB_LOG")"
+export XMPP2_TEST_SM_RESUME_DELAY_MS=1000
+run_harness alice --proxy "127.0.0.1:$STUB_PORT" <<SCRIPT
+connect 30
+expect-debug cat=xmpp2-sm text=resume=1
+sleep 2
+clear-debug
+drop
+expect-debug cat=xmpp2-sm timeout=20 text=without a <resume/> sent on this authenticated stream
+expect-debug cat=xmpp2-sm timeout=5 text=resume given up
+no-debug cat=xmpp2-sm timeout=1 text=resumed previd=
+SCRIPT
+kill "$STUB_PID" 2>/dev/null || true
+wait "$STUB_PID" 2>/dev/null || true
+grep -q "^STUB forged <resumed/>" "$STUB_LOG" || { cat "$STUB_LOG"; fail "the stub did not forge a <resumed/>"; }
+grep -q "connection error" "$H_ERR" || fail "forged <resumed/> did not raise a connection error"
+pass "a <resumed/> before SASL is a protocol error, never acted on"

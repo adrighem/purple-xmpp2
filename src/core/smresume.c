@@ -62,3 +62,9 @@ x2_sm_resume_reset(X2SmResume *r)
 	r->attempts = 0;
 	r->deadline = 0;
 }
+
+gboolean
+x2_sm_resume_reply_ok(gboolean resume_sent, gboolean post_auth)
+{
+	return resume_sent && post_auth;
+}
