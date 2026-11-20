@@ -84,6 +84,29 @@ gboolean x2_sm_state_need_request(const X2SmState *st, guint threshold);
 /** Records that an ack request <r/> covering every sent stanza went out. */
 void x2_sm_state_requested(X2SmState *st);
 
+typedef enum {
+	X2_SM_RESEND_OK = 0,
+	X2_SM_RESEND_H_TOO_HIGH,	/* h acknowledges more than was sent */
+	X2_SM_RESEND_INCOMPLETE		/* an unacked stanza has no copy */
+} X2SmResend;
+
+/**
+ * Applies the h of <resumed h/> and lists what must be sent again: every
+ * stanza in (h, outbound], oldest first.  The items stay owned by the
+ * state (they are trimmed by later acks as usual) and keep their sequence
+ * numbers: a resend is a retransmission, not a new stanza.
+ *
+ * @param trimmed  Set to the number of items h acknowledged (may be NULL).
+ * @param resend   Set to a list of the queued items (free the list only),
+ *                 NULL unless X2_SM_RESEND_OK.
+ * @return X2_SM_RESEND_OK; X2_SM_RESEND_H_TOO_HIGH with the state
+ *         unchanged; X2_SM_RESEND_INCOMPLETE (h applied) when an unacked
+ *         stanza was evicted or queued without a copy (NULL item), so the
+ *         stream cannot be resumed without losing it.
+ */
+X2SmResend x2_sm_state_resumed(X2SmState *st, guint32 h, guint *trimmed,
+                               GList **resend);
+
 /**
  * Removes every queued item and returns them oldest first; the caller owns
  * the list and the items.  Counters are left unchanged.

@@ -731,19 +731,22 @@ Upstream `stream_management.c` implements counting and acks only. Findings
 5. `<failed/>` drops the queue silently, losing unacked messages without
    telling the user; the XEP-0198 1.6 `h` attribute on `<failed>` is ignored.
 
-M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
-`core/smstate.c`:
+M9 (done) fixes 2 to 5 (M10 fixes 1, below), contained in
+`stream_management.c` plus the pure `core/smstate.c`:
 
 - State (counters, unacked queue, `<enabled id max resume location>`) lives
   in a table keyed by `PurpleAccount`, not in `JabberStream`, so M10 can
   keep it across a transport reconnect. `jabber_close()` frees it via
-  `jabber_sm_close()`; `JabberStream` keeps only `sm_state`.
-- `<enable/>` is sent without `resume='true'` (tech lead decision: the
-  server must not hold a session we never resume) until M10 implements
-  `<resume/>`; `<enabled/>` is parsed and logged (debug `xmpp2-sm`).
-- Only `<message>` stanzas with a body and a `to` are copied into the
-  unacked queue (they are all that is ever reported); other stanzas queue a
-  NULL placeholder that keeps the sequence numbers.
+  `jabber_sm_close()`; `JabberStream` keeps only `sm_state` (and, since
+  M10, `sm_resume` while a resumption runs).
+- `<enable/>` was sent without `resume='true'` in v0.1.0 (tech lead
+  decision: the server must not hold a session we never resume); since M10
+  it carries `resume='true'` unless the account option `sm_resume` is off.
+  `<enabled id max resume location>` is parsed and logged (debug
+  `xmpp2-sm`).
+- In v0.1.0 only `<message>` stanzas with a body and a `to` were copied
+  into the unacked queue; since M10 every stanza is copied (a resumption
+  resends all of them). Only messages with a body are ever reported.
 - Raw XML from `send_raw` (the XML console) is parsed while SM is on (a
   wrapper element allows several top-level stanzas in one write) and each
   stanza is counted like any other, else the server's `h` overtakes ours and
@@ -771,17 +774,68 @@ M9 (done) fixes 2 to 5, contained in `stream_management.c` plus the pure
   off before the server confirmed this message, it may not have been
   delivered: TEXT"): the stream close does not wait for a last ack.
 
-Resumption (M10) is limited by Pidgin itself: on a NetworkManager "down"
-event Pidgin calls `purple_account_disconnect()` on every account
-(`pidgin/gtkconn.c` 187), and any `purple_connection_error` tears down
-buddies and chats, which the server will not re-send after a resume. So
-resumption only makes sense as a silent reconnect inside one
-`PurpleConnection`: on socket error with a resumable session, keep the
-connection in `PURPLE_CONNECTED`, reconnect TCP/TLS/SASL in the background
-with backoff, send `<resume previd h>`, flush the remainder. On `<failed>`
-or timeout, fall back to the normal `purple_connection_error` path where MAM
-covers the gap. Requires splitting transport state from session state in
-`JabberStream`; done last because it touches the most of `jabber.c`.
+#### M10: resumption as a silent reconnect
+
+Any `purple_connection_error` tears down buddies and chats, which the server
+does not send again after a resume, so resumption happens inside one
+`PurpleConnection` that stays `PURPLE_CONNECTED`. Files: `sm_resume.c`
+(transport lifecycle), `stream_management.c` (`<resume/>` state, ids),
+`core/smresume.c` (attempt policy) and `core/smstate.c`
+(`x2_sm_state_resumed()`), all with debug category `xmpp2-sm`.
+
+- Every transport failure in `jabber.c` (read or write error, server closed
+  the socket, ping timeout, a failed connect or TLS handshake of an
+  attempt) goes through `jabber_stream_lost()`. A deliberate close
+  (`jabber_close()`: sign-off, account removal, quit) never does.
+- A loss resumes only when the account is fully connected, SM is enabled
+  with `resume='true'` and an id, and no error is pending. Then
+  `js->sm_resume` is set; while it is set, stanzas sent by anything (UI,
+  modules, XML console) are counted and queued but not written, `<r/>` and
+  `<a/>` are not sent, the keepalive is off and connect progress is not
+  reported (the UI keeps showing the account online).
+- The teardown (`jabber_transport_close()`: socket or TLS, parser, write
+  buffer, SASL state, keepalive and inactivity timers) runs from a 0 s
+  timeout, never inside the parser. Roster, buddies, chats and IQ
+  callbacks stay.
+- Bounded: 2 attempts, the first after 1 s, the second 5 s after the first
+  failed; each attempt has 20 s to reach `<resumed/>`; no attempt starts
+  after the window, which is the server's `max` (60 s if absent, capped at
+  600 s).
+- An attempt runs the normal connect (SRV, TCP, STARTTLS, SASL). The
+  post-auth `<stream:features/>` go to `jabber_sm_resume_features()`: with
+  SM offered it sends `<resume previd h/>` (our inbound count) instead of a
+  bind; without SM it gives up.
+- `<resumed h/>`: `h` must match `previd` and must not exceed what was sent
+  (modulo 2^32). The queue is trimmed to `h`, the rest (stanzas lost in
+  flight, then those held during the gap) is written again in order with
+  its original sequence numbers (raw, not counted again), then `<r/>`. A
+  status change made during the gap is sent after that. No bind, no
+  roster fetch, no initial presence, no `x2_ext_session_ready()`: MAM does
+  not catch up again, carbons stay enabled on the server, rooms stay
+  joined.
+- `<failed/>` (debug `resume failed (condition)`), an invalid `<resumed>`,
+  an unacked stanza evicted from the full queue, no attempts left or the
+  window over: `h` on `<failed>` is applied, then the usual
+  `purple_connection_error` (network error). The `connection-error`
+  handler reports the unacked messages as in v0.1.0, the UI reconnects
+  with a full login (bind, roster, rooms rejoined by Pidgin), MAM fills
+  the gap.
+- `jabber_close()` cancels the attempt and every timer first. A clean
+  sign-off sends `</stream:stream>`, which ends the session on the server
+  (Prosody does not hibernate it; `integration-sm_resume` checks that the
+  room sees us leave at once). A sign-off during a resumption cannot reach
+  the old session: the server drops it after `max`.
+- NetworkManager: on a "network down" event Pidgin calls
+  `purple_account_disconnect()` on every account (`pidgin/gtkconn.c`,
+  `pidgin_connection_network_disconnected()`), and on "up" it signs them on
+  again. For libpurple that is a deliberate disconnect: no resumption, the
+  closing `</stream>` usually does not reach the server, so the server
+  keeps the old session until `max` or until our next login replaces the
+  resource; the new login is a full one with MAM catch-up. Resumption
+  covers drops the socket notices first (Wi-Fi roaming, suspend without NM,
+  a NAT timeout, a server-side TCP reset) and ping timeouts.
+- Test hook (`-DXMPP2_TEST_HOOKS=ON`): `XMPP2_TEST_SM_RESUME_DELAY_MS`
+  stretches the first delay so a test can act while the transport is down.
 
 MAM, not SM, is the primary offline-messaging mechanism.
 

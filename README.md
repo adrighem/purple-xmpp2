@@ -24,7 +24,7 @@ the server archive and shows it in the right conversation, in order, once.
 | Everything the built-in XMPP plugin does, except the dropped parts below | | Inherited (forked from Pidgin 2.14.14) |
 | Message archive catch-up | XEP-0313 | 1:1 chats and group chats. Offline and other-device messages appear on login with their original time; room history on join comes from the room archive instead of replayed legacy history |
 | Message carbons | XEP-0280 | Messages you send or receive on other devices show up here |
-| Stream management | XEP-0198 | Batched acks, no blind resend of unacked messages; unacked messages are reported when the connection drops. No resumption yet |
+| Stream management | XEP-0198 | Batched acks, no blind resend of unacked messages. Since v0.2: after a network drop the session is resumed silently (the account stays online, rooms stay joined, nothing is lost or doubled); if the server cannot resume, unacked messages are reported and the normal reconnect with archive catch-up follows |
 | HTTP file upload | XEP-0363 | Used for sending files; falls back to SI file transfer when the server has no upload service |
 | Delivery receipts | XEP-0184 | Sent and received; optional notice line, signal `xmpp2-receipt` |
 | Chat markers | XEP-0333 | 1:1 chats: `displayed` is sent when you focus the conversation; signal `xmpp2-marker` |
@@ -63,11 +63,19 @@ transfer proxies, custom smileys), the Advanced tab has:
 | Days a room's history position stays valid | 2 | `mam_muc_threshold_days` |
 | Show delivery and read notices | off | Prints "Message delivered." style lines in the conversation |
 | Allow unencrypted file upload | off | `allow_plain_http_upload`; permits `http://` upload slots |
+| Resume the session after a network drop | on | `sm_resume`; XEP-0198 resumption as a silent reconnect |
 
 ### Limitations
 
-- No stream resumption. After a network drop Pidgin reconnects normally and MAM
-  fills the gap (planned for v0.2).
+- Stream resumption only covers drops the plugin sees itself (socket error,
+  server closed the connection, ping timeout). When NetworkManager reports the
+  network as down, Pidgin signs every account off on purpose, so the session
+  is not resumed: Pidgin logs in again when the network is back and MAM fills
+  the gap.
+- If resumption fails (server restarted, session expired, or two attempts
+  within the server's limit failed), the account goes offline and Pidgin
+  reconnects normally: rooms are rejoined, MAM fills the gap, and messages the
+  server had not confirmed are reported as "may not have been delivered".
 - Ticks for receipts and markers need the separate `pidgin-xmpp2-ticks` Pidgin
   plugin; other libpurple clients get the optional notice line and the
   signals. Ticks only appear on lines sent from this Pidgin while the

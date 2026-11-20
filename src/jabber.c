@@ -69,6 +69,7 @@
 #include "pep.h"
 #include "adhoccommands.h"
 #include "stream_management.h"
+#include "sm_resume.h"
 
 
 #define PING_TIMEOUT 60
@@ -267,6 +268,12 @@ void jabber_stream_features_parse(JabberStream *js, xmlnode *packet)
 		return;
 	}
 
+	/* Reconnecting for XEP-0198 resumption: auth, then <resume/>, no bind */
+	if (js->sm_resume != NULL && !js->registration) {
+		jabber_sm_resume_features(js, packet);
+		return;
+	}
+
 	if(js->registration) {
 		jabber_register_start(js);
 	} else if(xmlnode_get_child(packet, "mechanisms")) {
@@ -404,8 +411,7 @@ static void jabber_send_cb(gpointer data, gint source, PurpleInputCondition cond
 	else if (ret <= 0) {
 		gchar *tmp = g_strdup_printf(_("Lost connection with server: %s"),
 				g_strerror(errno));
-		purple_connection_error_reason(js->gc,
-			PURPLE_CONNECTION_ERROR_NETWORK_ERROR, tmp);
+		jabber_stream_lost(js, tmp);
 		g_free(tmp);
 		return;
 	}
@@ -419,6 +425,15 @@ static gboolean do_jabber_send_raw(JabberStream *js, const char *data, int len)
 	gboolean success = TRUE;
 
 	g_return_val_if_fail(len > 0, FALSE);
+
+	/* The socket failed, or is being replaced for a resumption: the SM
+	 * queue keeps the stanzas, everything else is moot. */
+	if (js->transport_down
+	    || (js->sm_resume != NULL && js->fd < 0 && js->gsc == NULL)) {
+		purple_debug_misc("xmpp2", "transport down, %d bytes not "
+		                  "written\n", len);
+		return FALSE;
+	}
 
 	if (js->state == JABBER_STREAM_CONNECTED)
 		jabber_stream_restart_inactivity_timer(js);
@@ -440,8 +455,7 @@ static gboolean do_jabber_send_raw(JabberStream *js, const char *data, int len)
 		if (!account->disconnecting) {
 			gchar *tmp = g_strdup_printf(_("Lost connection with server: %s"),
 					g_strerror(errno));
-			purple_connection_error_reason(js->gc,
-				PURPLE_CONNECTION_ERROR_NETWORK_ERROR, tmp);
+			jabber_stream_lost(js, tmp);
 			g_free(tmp);
 		}
 
@@ -541,7 +555,9 @@ int jabber_prpl_send_raw(PurpleConnection *gc, const char *buf, int len)
 			  "or more complete, well-formed elements."));
 		return -1;
 	}
-	jabber_send_raw(js, buf, len);
+	/* Resuming: counted and queued above, sent after <resumed/> */
+	if (js->sm_resume == NULL)
+		jabber_send_raw(js, buf, len);
 	return (len < 0 ? (int)strlen(buf) : len);
 }
 
@@ -584,6 +600,15 @@ void jabber_send_signal_cb(PurpleConnection *pc, xmlnode **packet,
 	if (NULL == js)
 		return;
 
+	/* Resuming: count and queue only; sent from the SM queue after
+	 * <resumed/> (or reported if the resumption fails). */
+	if (js->sm_resume != NULL && jabber_is_stanza(*packet)) {
+		purple_debug_misc("xmpp2", "resuming, <%s/> held\n",
+		                  (*packet)->name);
+		jabber_sm_outbound(js, *packet);
+		return;
+	}
+
 	txt = xmlnode_to_str(*packet, &len);
 	jabber_send_raw(js, txt, len);
 	g_free(txt);
@@ -599,9 +624,9 @@ void jabber_send(JabberStream *js, xmlnode *packet)
 static gboolean jabber_keepalive_timeout(PurpleConnection *gc)
 {
 	JabberStream *js = gc->proto_data;
-	purple_connection_error_reason(gc, PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
-					_("Ping timed out"));
+
 	js->keepalive_timeout = 0;
+	jabber_stream_lost(js, _("Ping timed out"));
 	return FALSE;
 }
 
@@ -610,6 +635,8 @@ void jabber_keepalive(PurpleConnection *gc)
 	JabberStream *js = purple_connection_get_protocol_data(gc);
 	time_t now = time(NULL);
 
+	if (js->sm_resume != NULL)
+		return;
 	if (js->keepalive_timeout == 0 && (now - js->last_ping) >= PING_TIMEOUT) {
 		js->last_ping = now;
 
@@ -633,6 +660,8 @@ jabber_recv_cb_ssl(gpointer data, PurpleSslConnection *gsc,
 		purple_ssl_close(gsc);
 		g_return_if_reached();
 	}
+	if (js->transport_down)
+		return;
 
 	while((len = purple_ssl_read(gsc, buf, sizeof(buf) - 1)) > 0) {
 		gc->last_received = time(NULL);
@@ -652,8 +681,7 @@ jabber_recv_cb_ssl(gpointer data, PurpleSslConnection *gsc,
 		else
 			tmp = g_strdup_printf(_("Lost connection with server: %s"),
 					g_strerror(errno));
-		purple_connection_error_reason(js->gc,
-			PURPLE_CONNECTION_ERROR_NETWORK_ERROR, tmp);
+		jabber_stream_lost(js, tmp);
 		g_free(tmp);
 	}
 }
@@ -667,6 +695,8 @@ jabber_recv_cb(gpointer data, gint source, PurpleInputCondition condition)
 	static char buf[4096];
 
 	g_return_if_fail(PURPLE_CONNECTION_IS_VALID(gc));
+	if (js->transport_down)
+		return;
 
 	if((len = read(js->fd, buf, sizeof(buf) - 1)) > 0) {
 		gc->last_received = time(NULL);
@@ -684,8 +714,7 @@ jabber_recv_cb(gpointer data, gint source, PurpleInputCondition condition)
 		else
 			tmp = g_strdup_printf(_("Lost connection with server: %s"),
 					g_strerror(errno));
-		purple_connection_error_reason(js->gc,
-			PURPLE_CONNECTION_ERROR_NETWORK_ERROR, tmp);
+		jabber_stream_lost(js, tmp);
 		g_free(tmp);
 	}
 }
@@ -720,14 +749,13 @@ jabber_login_callback(gpointer data, gint source, const gchar *error)
 	PurpleConnection *gc = data;
 	JabberStream *js = purple_connection_get_protocol_data(gc);
 
+	js->connect_data = NULL;
 	if (source < 0) {
 		if (js->srv_rec != NULL) {
 			purple_debug_error("xmpp2", "Unable to connect to server: %s.  Trying next SRV record or connecting directly.\n", error);
 			try_srv_connect(js);
 		} else {
-			purple_connection_error_reason(js->gc,
-				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
-				_("Unable to connect"));
+			jabber_stream_lost(js, _("Unable to connect"));
 		}
 		return;
 	}
@@ -757,6 +785,11 @@ jabber_ssl_connect_failure(PurpleSslConnection *gsc, PurpleSslErrorType error,
 	js = gc->proto_data;
 	js->gsc = NULL;
 
+	/* A resumption attempt may retry, unless the certificate is bad */
+	if (js->sm_resume != NULL && error != PURPLE_SSL_CERTIFICATE_INVALID) {
+		jabber_stream_lost(js, purple_ssl_strerror(error));
+		return;
+	}
 	purple_connection_ssl_error (gc, error);
 }
 
@@ -783,13 +816,12 @@ static gboolean jabber_login_connect(JabberStream *js, const char *domain, const
 	else
 		js->serverFQDN = g_strdup(host);
 
-	if (purple_proxy_connect(js->gc, purple_connection_get_account(js->gc),
-			host, port, jabber_login_callback, js->gc) == NULL) {
-		if (fatal_failure) {
-			purple_connection_error_reason(js->gc,
-				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
-				_("Unable to connect"));
-		}
+	js->connect_data = purple_proxy_connect(js->gc,
+			purple_connection_get_account(js->gc),
+			host, port, jabber_login_callback, js->gc);
+	if (js->connect_data == NULL) {
+		if (fatal_failure)
+			jabber_stream_lost(js, _("Unable to connect"));
 
 		return FALSE;
 	}
@@ -926,7 +958,7 @@ jabber_stream_new(PurpleAccount *account)
 	return js;
 }
 
-static void
+void
 jabber_stream_connect(JabberStream *js)
 {
 	PurpleConnection *gc = js->gc;
@@ -936,6 +968,7 @@ jabber_stream_connect(JabberStream *js)
 
 	jabber_stream_set_state(js, JABBER_STREAM_CONNECTING);
 
+	g_free(js->certificate_CN);
 	js->certificate_CN = g_strdup(connect_server[0] ? connect_server : js->user->domain);
 
 	/* if they've got old-ssl mode going, we probably want to ignore SRV lookups */
@@ -1004,6 +1037,66 @@ jabber_login(PurpleAccount *account)
 	jabber_stream_connect(js);
 }
 
+void
+jabber_stream_lost(JabberStream *js, const char *msg)
+{
+	if (jabber_sm_resume_lost(js, msg))
+		return;
+	purple_connection_error_reason(js->gc,
+		PURPLE_CONNECTION_ERROR_NETWORK_ERROR, msg);
+}
+
+void
+jabber_transport_close(JabberStream *js)
+{
+	PurpleConnection *gc = js->gc;
+
+	if (js->connect_data) {
+		purple_proxy_connect_cancel(js->connect_data);
+		js->connect_data = NULL;
+	}
+	if (js->srv_query_data) {
+		purple_srv_cancel(js->srv_query_data);
+		js->srv_query_data = NULL;
+	}
+	if (js->gsc) {
+		purple_ssl_close(js->gsc);
+		js->gsc = NULL;
+	} else if (js->fd >= 0) {
+		if (gc->inpa)
+			purple_input_remove(gc->inpa);
+		close(js->fd);
+	}
+	gc->inpa = 0;
+	js->fd = -1;
+	if (js->writeh) {
+		purple_input_remove(js->writeh);
+		js->writeh = 0;
+	}
+	purple_circ_buffer_destroy(js->write_buffer);
+	js->write_buffer = purple_circ_buffer_new(512);
+	jabber_parser_free(js);
+
+	if (js->keepalive_timeout != 0) {
+		purple_timeout_remove(js->keepalive_timeout);
+		js->keepalive_timeout = 0;
+	}
+	if (js->inactivity_timer != 0) {
+		purple_timeout_remove(js->inactivity_timer);
+		js->inactivity_timer = 0;
+	}
+	if (js->auth_mech && js->auth_mech->dispose)
+		js->auth_mech->dispose(js);
+	js->auth_mech = NULL;
+	g_free(js->stream_id);
+	js->stream_id = NULL;
+	g_free(js->srv_rec);
+	js->srv_rec = NULL;
+	js->reinit = FALSE;
+	js->protocol_version.major = 1;
+	js->protocol_version.minor = 0;
+	js->state = JABBER_STREAM_OFFLINE;
+}
 
 static gboolean
 conn_close_cb(gpointer data)
@@ -1503,6 +1596,9 @@ void jabber_close(PurpleConnection *gc)
 {
 	JabberStream *js = purple_connection_get_protocol_data(gc);
 
+	/* a deliberate close never resumes: stop any attempt first */
+	jabber_sm_resume_cancel(js);
+
 	/* modules flush queued messages while buddies and chats still exist */
 	x2_ext_stream_closing(js);
 
@@ -1516,6 +1612,8 @@ void jabber_close(PurpleConnection *gc)
 
 	if (js->srv_query_data)
 		purple_srv_cancel(js->srv_query_data);
+	if (js->connect_data)
+		purple_proxy_connect_cancel(js->connect_data);
 
 	if(js->gsc) {
 		purple_ssl_close(js->gsc);
@@ -1610,6 +1708,15 @@ void jabber_close(PurpleConnection *gc)
 	gc->proto_data = NULL;
 }
 
+/* No progress while resuming: the account stays connected in the UI */
+static void
+stream_progress(JabberStream *js, const char *text, size_t step,
+                size_t count)
+{
+	if (js->sm_resume == NULL)
+		purple_connection_update_progress(js->gc, text, step, count);
+}
+
 void jabber_stream_set_state(JabberStream *js, JabberStreamState state)
 {
 #define JABBER_CONNECT_STEPS ((js->gsc || js->state == JABBER_STREAM_INITIALIZING_ENCRYPTION) ? 9 : 5)
@@ -1619,24 +1726,24 @@ void jabber_stream_set_state(JabberStream *js, JabberStreamState state)
 		case JABBER_STREAM_OFFLINE:
 			break;
 		case JABBER_STREAM_CONNECTING:
-			purple_connection_update_progress(js->gc, _("Connecting"), 1,
+			stream_progress(js, _("Connecting"), 1,
 					JABBER_CONNECT_STEPS);
 			break;
 		case JABBER_STREAM_INITIALIZING:
-			purple_connection_update_progress(js->gc, _("Initializing Stream"),
+			stream_progress(js, _("Initializing Stream"),
 					js->gsc ? 5 : 2, JABBER_CONNECT_STEPS);
 			jabber_stream_init(js);
 			break;
 		case JABBER_STREAM_INITIALIZING_ENCRYPTION:
-			purple_connection_update_progress(js->gc, _("Initializing SSL/TLS"),
+			stream_progress(js, _("Initializing SSL/TLS"),
 											  6, JABBER_CONNECT_STEPS);
 			break;
 		case JABBER_STREAM_AUTHENTICATING:
-			purple_connection_update_progress(js->gc, _("Authenticating"),
+			stream_progress(js, _("Authenticating"),
 					js->gsc ? 7 : 3, JABBER_CONNECT_STEPS);
 			break;
 		case JABBER_STREAM_POST_AUTH:
-			purple_connection_update_progress(js->gc, _("Re-initializing Stream"),
+			stream_progress(js, _("Re-initializing Stream"),
 					(js->gsc ? 8 : 4), JABBER_CONNECT_STEPS);
 
 			break;

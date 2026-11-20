@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 purple-xmpp2 contributors
 #
-# M9 stream management (XEP-0198): plain enable (no resume until M10),
+# M9 stream management (XEP-0198) with the account option sm_resume off
+# (the v0.1.0 path; resumption is test_sm_resume.sh): plain enable,
 # batched acks, XML console stanzas counted, no resend on a fresh session
 # after a TCP drop, unacked messages reported on a drop and on sign-off.
 # Asserts on xmpp2-sm debug lines, so it needs PRPL=prpl-xmpp2.
@@ -19,7 +20,8 @@ test_init sm
 
 TAG="$$-$RANDOM"
 
-# 1. The server offers SM; we enable it without resume and parse <enabled/>.
+# 1. The server offers SM; with sm_resume off we enable it without resume
+# and parse <enabled/>.
 run_peer bob --do streamfeatures | grep -q "PEER-STREAM stream_management" ||
 	fail "server does not offer stream management"
 
@@ -74,7 +76,7 @@ expect-ev kind=system timeout=5 text=it may not have been delivered: bye-$TAG
 expect-debug cat=xmpp2-sm text=signed off with 1 unacked stanzas (1 messages reported
 SCRIPT
 } >"$WORK/alice.in"
-run_harness alice <"$WORK/alice.in"
+run_harness alice --pref b:sm_resume=0 <"$WORK/alice.in"
 
 requests=$(grep -c "^DBG xmpp2-sm: request ack" "$H_OUT" || true)
 echo "ack requests for 20 messages: $requests"

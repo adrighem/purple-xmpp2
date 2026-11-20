@@ -95,7 +95,10 @@ default HTTP port + 1).
   python; a real Pidgin under xvfb-run checks the offer when installed.
 - `test_basic.sh` is the 1:1 baseline; `test_selftest.sh` exercises every
   harness and peer primitive (works with both prpls). `test_sm.sh` covers
-  stream management (prpl-xmpp2 only, else exit 77). `test_mam_muc.sh`,
+  stream management with the `sm_resume` option off (prpl-xmpp2 only, else
+  exit 77); `test_sm_resume.sh` covers resumption as a silent reconnect
+  (also needs `-DXMPP2_TEST_HOOKS=ON` for `XMPP2_TEST_SM_RESUME_DELAY_MS`;
+  it drops the hibernated session through `prosodyctl shell`). `test_mam_muc.sh`,
   `test_mam_muc_bulk.sh` and `test_mam_muc_legacy.sh` (profile `nomam`)
   cover room history (PLAN M4); the state file's `[archive <room>]`
   section holds the room cursor.

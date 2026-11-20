@@ -46,4 +46,14 @@ void jabber_sm_outbound(JabberStream *js, xmlnode *packet);
 gboolean jabber_sm_outbound_raw(JabberStream *js, const char *buf, int len);
 void jabber_sm_inbound(JabberStream *js, xmlnode *packet);
 
+/* For resumption (sm_resume.c) */
+
+/* TRUE if the server keeps this session for <resume/>; @a max is its
+ * <enabled max/> in seconds (0: not given). */
+gboolean jabber_sm_resumable(JabberStream *js, guint *max);
+struct _X2SmState *jabber_sm_get_state(JabberStream *js);
+const char *jabber_sm_get_resume_id(JabberStream *js);
+/* Sends <r/> now (after a resend) */
+void jabber_sm_request_ack(JabberStream *js);
+
 #endif /* PURPLE_JABBER_STREAM_MANAGEMENT_H */

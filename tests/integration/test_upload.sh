@@ -83,7 +83,9 @@ pass "upload service discovered from our own server's items only"
 # 6. Connection lost while the slot request is in flight: the transfer is
 # cancelled while the stream still has its IQ table (a use-after-free
 # before; run under -DXMPP2_SANITIZE=ON to see it), no crash, no criticals.
-run_harness alice "${OPT[@]}" <<SCRIPT
+# Resumption off (sm_resume=0): with it the drop is resumed and the upload
+# completes, which test_sm_resume.sh covers for messages.
+run_harness alice "${OPT[@]}" --pref b:sm_resume=0 <<SCRIPT
 connect 30
 upload-drop bob@localhost $WORK/one.png 15
 expect-debug cat=xmpp2-upload text=requested an upload slot

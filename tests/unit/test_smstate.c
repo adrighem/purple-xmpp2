@@ -165,6 +165,79 @@ test_reset_drops_queue(void)
 	x2_sm_state_free(NULL);
 }
 
+/* <resumed h/> trims (acked, h] and lists the rest for a resend, in order,
+ * across the 2^32 wrap; the items stay queued until a later ack. */
+static void
+test_resumed_resends_rest(void)
+{
+	X2SmState *st = state_with(100, G_MAXUINT32 - 1, 5, 5);
+	GList *resend = NULL;
+	guint trimmed;
+
+	/* seqs 2^32-1, 0, 1, 2, 3; the server handled the first three */
+	g_assert_cmpint(x2_sm_state_resumed(st, 1, &trimmed, &resend), ==,
+	                X2_SM_RESEND_OK);
+	g_assert_cmpuint(trimmed, ==, 3);
+	g_assert_cmpuint(g_list_length(resend), ==, 2);
+	g_assert_cmpstr(resend->data, ==, "s4");
+	g_assert_cmpstr(resend->next->data, ==, "s5");
+	g_list_free(resend);
+	/* still owned and queued; counters unchanged by the resend */
+	g_assert_cmpuint(x2_sm_state_queued(st), ==, 2);
+	g_assert_cmpuint(x2_sm_state_outbound(st), ==, 3);
+	g_assert_cmpuint(freed, ==, 3);
+	g_assert_true(x2_sm_state_ack(st, 3, &trimmed));
+	g_assert_cmpuint(trimmed, ==, 2);
+
+	/* everything handled: nothing to resend */
+	g_assert_cmpint(x2_sm_state_resumed(st, 3, &trimmed, &resend), ==,
+	                X2_SM_RESEND_OK);
+	g_assert_null(resend);
+	x2_sm_state_free(st);
+}
+
+static void
+test_resumed_h_too_high(void)
+{
+	X2SmState *st = state_with(100, G_MAXUINT32, 0, 2);
+	GList *resend = (GList *)1;
+
+	/* sent 0 and 1 after the wrap: h=2 is beyond */
+	g_assert_cmpint(x2_sm_state_resumed(st, 2, NULL, &resend), ==,
+	                X2_SM_RESEND_H_TOO_HIGH);
+	g_assert_null(resend);
+	g_assert_cmpuint(x2_sm_state_queued(st), ==, 2);
+	g_assert_cmpuint(x2_sm_state_acked(st), ==, G_MAXUINT32);
+	x2_sm_state_free(st);
+}
+
+static void
+test_resumed_incomplete(void)
+{
+	X2SmState *st = state_with(3, 0, 0, 5);
+	GList *resend = NULL;
+
+	/* two unacked stanzas were evicted from the full queue */
+	g_assert_cmpint(x2_sm_state_resumed(st, 1, NULL, &resend), ==,
+	                X2_SM_RESEND_INCOMPLETE);
+	g_assert_null(resend);
+	g_assert_cmpint(x2_sm_state_resumed(st, 2, NULL, &resend), ==,
+	                X2_SM_RESEND_OK);
+	g_assert_cmpuint(g_list_length(resend), ==, 3);
+	g_list_free(resend);
+	x2_sm_state_free(st);
+
+	/* a stanza queued without a copy cannot be sent again */
+	st = state_with(10, 0, 0, 1);
+	x2_sm_state_sent(st, NULL);
+	g_assert_cmpint(x2_sm_state_resumed(st, 0, NULL, &resend), ==,
+	                X2_SM_RESEND_INCOMPLETE);
+	g_assert_cmpint(x2_sm_state_resumed(st, 2, NULL, &resend), ==,
+	                X2_SM_RESEND_OK);
+	g_assert_null(resend);
+	x2_sm_state_free(st);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -175,5 +248,8 @@ main(int argc, char **argv)
 	g_test_add_func("/smstate/request-batching", test_request_batching);
 	g_test_add_func("/smstate/bounded-queue", test_bounded_queue_evicts_oldest);
 	g_test_add_func("/smstate/reset", test_reset_drops_queue);
+	g_test_add_func("/smstate/resumed-resends-rest", test_resumed_resends_rest);
+	g_test_add_func("/smstate/resumed-h-too-high", test_resumed_h_too_high);
+	g_test_add_func("/smstate/resumed-incomplete", test_resumed_incomplete);
 	return g_test_run();
 }

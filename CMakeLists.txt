@@ -82,6 +82,7 @@ set(XMPP2_SOURCES
     src/presence.c
     src/roster.c
     src/si.c
+    src/sm_resume.c
     src/stream_management.c
     src/useravatar.c
     src/usermood.c
@@ -108,6 +109,7 @@ add_library(x2core STATIC
     src/core/replace_parse.c
     src/core/migrate_map.c
     src/core/sid.c
+    src/core/smresume.c
     src/core/smstate.c
     src/core/store.c
     src/core/upload_http.c
