@@ -110,8 +110,6 @@ X2MamRoomStart x2_mam_room_start(const char *cursor, gint64 cursor_ts,
  */
 gboolean x2_mam_inner_is_own(const xmlnode *inner, const char *own_bare);
 
-/** TRUE if the bare part of @a jid (resource stripped) equals @a bare. */
-gboolean x2_mam_bare_equal(const char *jid, const char *bare);
 
 /** Fate of a live message held back during a catch-up, when it ends. */
 typedef enum {

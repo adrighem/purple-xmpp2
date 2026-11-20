@@ -8,6 +8,7 @@
 
 #include "mam_proto.h"
 #include "forward.h"
+#include "jid.h"
 
 #define X2_NS_XDATA "jabber:x:data"
 #define X2_NS_STANZAS "urn:ietf:params:xml:ns:xmpp-stanzas"
@@ -90,26 +91,13 @@ x2_mam_query_new(const X2MamQuery *q)
 }
 
 gboolean
-x2_mam_bare_equal(const char *jid, const char *bare)
-{
-	const char *slash;
-	size_t len;
-
-	if (jid == NULL || bare == NULL)
-		return FALSE;
-	slash = strchr(jid, '/');
-	len = slash ? (size_t)(slash - jid) : strlen(jid);
-	return len == strlen(bare) && strncmp(jid, bare, len) == 0;
-}
-
-gboolean
 x2_mam_inner_is_own(const xmlnode *inner, const char *own_bare)
 {
 	g_return_val_if_fail(inner != NULL, FALSE);
 	g_return_val_if_fail(own_bare != NULL, FALSE);
 
-	return x2_mam_bare_equal(xmlnode_get_attrib(inner, "from"), own_bare) ||
-	       x2_mam_bare_equal(xmlnode_get_attrib(inner, "to"), own_bare);
+	return x2_jid_bare_equal(xmlnode_get_attrib(inner, "from"), own_bare) ||
+	       x2_jid_bare_equal(xmlnode_get_attrib(inner, "to"), own_bare);
 }
 
 /* Checks shared by both archive kinds, after the outer from: queryid,
@@ -208,7 +196,7 @@ x2_mam_room_result_check(xmlnode *outer, const char *room,
 	}
 	if (check_result(result, queryid, inner, id, why) != X2_MAM_VALID)
 		return X2_MAM_FORGED;
-	if (!x2_mam_bare_equal(xmlnode_get_attrib(*inner, "from"), room)) {
+	if (!x2_jid_bare_equal(xmlnode_get_attrib(*inner, "from"), room)) {
 		*inner = NULL;
 		*id = NULL;
 		*why = "inner message is not from the room";

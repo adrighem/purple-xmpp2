@@ -30,8 +30,12 @@
 
 extern const X2Ext x2_ext_markers;
 
+/* Contacts we track at most; the least recently updated one is dropped */
+#define PEERS_CAPACITY 256
+
 /* Per contact: the newest markable message and what we told them */
 typedef struct {
+	guint64 seq;       /* update order, for eviction */
 	char *last_id;     /* newest markable message received */
 	time_t last_ts;
 	char *sent_id;     /* message we last sent a displayed marker for */
@@ -39,7 +43,8 @@ typedef struct {
 
 typedef struct {
 	X2Dedup *sent;     /* messages we made markable, see x2_ack_key() */
-	GHashTable *peers; /* bare JID -> PeerState */
+	GHashTable *peers; /* bare JID -> PeerState, at most PEERS_CAPACITY */
+	guint64 seq;       /* last PeerState::seq handed out */
 } MarkersPriv;
 
 static PurplePlugin *signal_plugin;
@@ -102,6 +107,14 @@ conversation_updated_cb(PurpleConversation *conv, PurpleConvUpdateType type)
 	if (purple_strequal(st->sent_id, st->last_id)) {
 		purple_debug_info(LOG, "displayed for %s already sent to %s\n",
 		                  st->last_id, bare);
+		g_free(bare);
+		return;
+	}
+
+	/* same gate as the receipts: the marker tells the sender that we read */
+	if (!x2_peer_sees_us(js, bare)) {
+		purple_debug_info(LOG, "not sending displayed to %s: no presence "
+		                  "subscription\n", bare);
 		g_free(bare);
 		return;
 	}
@@ -233,22 +246,52 @@ got_marker(JabberStream *js, const char *from, X2MarkerType type,
 	g_free(bare);
 }
 
-/* Remember the newest markable message of a contact (1:1 only). */
+/* Drops the least recently updated contact. */
+static void
+evict_oldest_peer(GHashTable *peers)
+{
+	GHashTableIter it;
+	gpointer key, value;
+	gpointer oldest = NULL;
+	guint64 seq = G_MAXUINT64;
+
+	g_hash_table_iter_init(&it, peers);
+	while (g_hash_table_iter_next(&it, &key, &value)) {
+		if (((PeerState *)value)->seq <= seq) {
+			seq = ((PeerState *)value)->seq;
+			oldest = key;
+		}
+	}
+	if (oldest != NULL)
+		g_hash_table_remove(peers, oldest);
+}
+
+/*
+ * Remember the newest markable message of a contact (1:1 only).  Only
+ * contacts we would send a displayed to are tracked, and no more than
+ * PEERS_CAPACITY of them: strangers must not grow the table.
+ */
 static void
 remember_markable(JabberStream *js, const X2Msg *m, const char *id)
 {
-	GHashTable *peers = get_priv(js)->peers;
+	MarkersPriv *priv = get_priv(js);
+	GHashTable *peers = priv->peers;
 	PeerState *st;
 
 	/* a MUC private message keeps the full JID in peer */
 	if (m->peer == NULL || strchr(m->peer, '/') != NULL)
 		return;
+	if (!x2_peer_sees_us(js, m->peer))
+		return;
 
 	st = g_hash_table_lookup(peers, m->peer);
 	if (st == NULL) {
+		if (g_hash_table_size(peers) >= PEERS_CAPACITY)
+			evict_oldest_peer(peers);
 		st = g_new0(PeerState, 1);
 		g_hash_table_insert(peers, g_strdup(m->peer), st);
 	}
+	st->seq = ++priv->seq;
 	/* catch-up delivers old messages after newer live ones */
 	if (st->last_id != NULL && m->ts < st->last_ts)
 		return;

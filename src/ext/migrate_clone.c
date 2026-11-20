@@ -10,7 +10,9 @@
 
 #include <limits.h>
 
+#include "buddyicon.h"
 #include "debug.h"
+#include "imgstore.h"
 #include "proxy.h"
 
 #include "core/migrate_map.h"
@@ -77,6 +79,29 @@ copy_proxy(PurpleAccount *orig, PurpleAccount *dst)
 	purple_account_set_proxy_info(dst, to);
 }
 
+/*
+ * The avatar libpurple has cached for the account (what we publish): a copy
+ * of the bytes, set_account_icon() keeps the buffer.  The user chosen
+ * buddy_icon_path is copied by copy_profile().
+ */
+static void
+copy_account_icon(PurpleAccount *orig, PurpleAccount *dst)
+{
+	PurpleStoredImage *img = purple_buddy_icons_find_account_icon(orig);
+	gsize len;
+	guchar *copy;
+
+	if (img == NULL)
+		return;
+	len = purple_imgstore_get_size(img);
+	if (len > 0) {
+		copy = g_malloc(len);
+		memcpy(copy, purple_imgstore_get_data(img), len);
+		purple_buddy_icons_set_account_icon(dst, copy, len);
+	}
+	purple_imgstore_unref(img);
+}
+
 /* alias, user info, buddy icon and the other account level settings */
 static void
 copy_profile(PurpleAccount *orig, PurpleAccount *dst)
@@ -130,6 +155,7 @@ x2_migrate_clone_account(PurpleAccount *orig, GList *opts)
 		copy_option(orig, dst, l->data);
 	copy_proxy(orig, dst);
 	copy_profile(orig, dst);
+	copy_account_icon(orig, dst);
 
 	purple_accounts_add(dst);
 	seed_state(dst);

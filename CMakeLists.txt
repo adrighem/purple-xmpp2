@@ -101,6 +101,7 @@ add_library(x2core STATIC
     src/core/corrlog.c
     src/core/dedup.c
     src/core/forward.c
+    src/core/jid.c
     src/core/mam_proto.c
     src/core/receipt_parse.c
     src/core/replace_parse.c

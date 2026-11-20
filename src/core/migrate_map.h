@@ -50,9 +50,10 @@ void x2_migrate_opts_free(GList *opts);
 gboolean x2_migrate_value_allowed(const X2MigrateOpt *opt, const char *value);
 
 /**
- * TRUE if two account usernames name the same XMPP account: the bare JID
- * compares case-insensitively, the resource exactly, and an empty resource
- * equals none.
+ * TRUE if two account usernames name the same XMPP account: the bare JIDs
+ * are equal, case-insensitively.  The resource is ignored: it is only how
+ * the account logs in, and a second session with the same bare JID is the
+ * same account (one copy per bare JID).
  */
 gboolean x2_migrate_same_username(const char *a, const char *b);
 

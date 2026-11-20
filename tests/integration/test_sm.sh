@@ -87,3 +87,15 @@ wait "$BOB_PID" || { cat "$WORK/bob.log"; fail "bob peer failed"; }
 grep -q "PEER recv chat .*: burst-$TAG-20" "$WORK/bob.log" || fail "bob missed the burst"
 grep -q "PEER count <body>drop-$TAG</body> = 1" "$WORK/bob.log" || fail "bob did not get drop-$TAG exactly once"
 pass "SM plain enable, batched acks ($requests <r/>), raw XML counted, drop and sign-off reported, no resend"
+
+# 4. Signed off with an unacked message to somebody we have no conversation
+# with (sent as raw XML): no conversation is opened for the notice, it only
+# goes to the debug log.
+run_harness alice <<SCRIPT
+connect 30
+raw <message to='carol@localhost' type='chat' id='noconv-$TAG'><body>noconv-$TAG</body></message>
+disconnect
+expect-debug cat=xmpp2-sm text=no open conversation with carol@localhost
+no-ev timeout=1 kind=system text=noconv-$TAG
+SCRIPT
+pass "sign-off notice for an unacked message opens no conversation"

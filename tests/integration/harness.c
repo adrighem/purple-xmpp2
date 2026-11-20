@@ -52,6 +52,10 @@
  *                             (PURPLE_CONV_UPDATE_UNSEEN), like a focused window
  *   action TEXT               run the prpl action of the (connected) account
  *                             whose label contains TEXT, like the Accounts menu
+ *   plugin-action ID TEXT     run the action of the plugin ID (not a prpl, no
+ *                             account needed) whose label contains TEXT, like
+ *                             Tools > Plugin Actions; FAIL if the plugin is
+ *                             not loaded or is a protocol plugin
  * Requests (purple_request_action() has a UI here that only records it):
  *   answer N [SECS]           wait for a request (10), press its button N
  *                             (0-based); prints "<primary> [b0|b1] -> bN"
@@ -1011,6 +1015,51 @@ static void cmd_action(const char *cmd, const char *text)
 		fail_now(cmd, "no action with that label");
 }
 
+/* Runs the action of a standard plugin, as Tools > Plugin Actions does:
+ * "ID TEXT", no context. Protocol plugins are not in that menu. */
+static void cmd_plugin_action(const char *cmd, const char *arg)
+{
+	char *id = g_strdup(arg), *text = strchr(id, ' ');
+	PurplePlugin *plugin;
+	GList *acts, *l;
+	gboolean hit = FALSE;
+
+	if (text == NULL) {
+		g_free(id);
+		fail_now(cmd, "want ID TEXT");
+		return;
+	}
+	*text++ = '\0';
+	plugin = purple_plugins_find_with_id(id);
+	if (plugin == NULL || !purple_plugin_is_loaded(plugin) ||
+	    PURPLE_IS_PROTOCOL_PLUGIN(plugin) ||
+	    !PURPLE_PLUGIN_HAS_ACTIONS(plugin)) {
+		g_free(id);
+		fail_now(cmd, "no such loaded plugin with actions");
+		return;
+	}
+	acts = PURPLE_PLUGIN_ACTIONS(plugin, NULL);
+	for (l = acts; l; l = l->next) {
+		PurplePluginAction *act = l->data;
+
+		if (!hit && act && act->label && strstr(act->label, text)) {
+			act->plugin = plugin;
+			act->context = NULL;
+			hit = TRUE;
+			act->callback(act);
+		}
+	}
+	for (l = acts; l; l = l->next)
+		if (l->data)
+			purple_plugin_action_free(l->data);
+	g_list_free(acts);
+	g_free(id);
+	if (hit)
+		continue_ok(cmd, text);
+	else
+		fail_now(cmd, "no action with that label");
+}
+
 static void set_libpref(const char *spec)
 {
 	const char *eq = strchr(spec, '=');
@@ -1324,6 +1373,8 @@ static void do_command(char *line)
 		continue_ok("dump-debug", NULL);
 	} else if (!strcmp(cmd, "action")) {
 		cmd_action(cmd, arg);
+	} else if (!strcmp(cmd, "plugin-action")) {
+		cmd_plugin_action(cmd, arg);
 	} else if (!strcmp(cmd, "answer")) {
 		char *sp = strchr(arg, ' ');
 

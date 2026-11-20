@@ -474,6 +474,12 @@ x2_upload_status_parse(const char *response, int *code)
 	return TRUE;
 }
 
+gboolean
+x2_upload_put_status_ok(int code)
+{
+	return code == 200 || code == 201 || code == 204;
+}
+
 xmlnode *
 x2_upload_message_new(const char *to, gboolean groupchat, const char *url)
 {

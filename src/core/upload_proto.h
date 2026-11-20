@@ -117,6 +117,13 @@ char *x2_upload_put_head(const X2UploadSlot *slot, guint64 size,
 gboolean x2_upload_status_parse(const char *response, int *code);
 
 /**
+ * Is an HTTP status of the PUT a success?  XEP-0363 asks for 201 Created,
+ * but servers also answer 200 OK or 204 No Content once the file is stored.
+ * Redirects (3xx) and everything else are failures.
+ */
+gboolean x2_upload_put_status_ok(int code);
+
+/**
  * Builds the message that announces an upload: body is the URL (clients
  * without XEP-0066 show it) plus <x xmlns='jabber:x:oob'><url/></x>.
  */

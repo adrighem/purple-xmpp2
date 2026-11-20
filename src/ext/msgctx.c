@@ -42,7 +42,8 @@ x2_msg_peer_of(JabberStream *js, const char *jid, const char *type,
 
 	if (id->resource != NULL && id->node != NULL &&
 	    !purple_strequal(type, "groupchat") &&
-	    (xmlnode_get_child_with_namespace(msg, "x", X2_NS_MUC_USER) != NULL ||
+	    ((msg != NULL &&
+	      xmlnode_get_child_with_namespace(msg, "x", X2_NS_MUC_USER) != NULL) ||
 	     jabber_chat_find(js, id->node, id->domain) != NULL))
 		peer = g_strdup(jid);
 	else
@@ -86,8 +87,8 @@ update_from_message(JabberStream *js, X2Msg *m)
 
 	origin_id = x2_sid_origin_id(m->msg);
 	g_free(m->key);
-	m->key = x2_dedup_make_key(m->stanza_id, m->dir == X2_DIR_OUT, m->peer,
-	                           origin_id);
+	m->key = x2_dedup_make_key(m->stanza_id, m->archive,
+	                           m->dir == X2_DIR_OUT, m->peer, origin_id);
 	g_free(origin_id);
 
 	m->delayed = x2_forward_delay_parse(m->msg, &m->ts);

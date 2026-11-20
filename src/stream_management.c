@@ -171,9 +171,16 @@ sm_item_free(gpointer item)
 		xmlnode_free(item);
 }
 
-/* Tells the user about one unacked outgoing message (NULL: not a message). */
+/*
+ * Tells the user about one unacked outgoing message (FALSE: not a message).
+ * @a visible: write into a new conversation or a dialog when none is open
+ * (connection lost, the user is looking).  At sign-off or quit the UI is
+ * going away or the user left on purpose: only a conversation that already
+ * exists gets the line, otherwise it goes to the debug log.
+ */
 static gboolean
-sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt)
+sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt,
+                  gboolean visible)
 {
 	const char *to, *type;
 	PurpleConversation *conv = NULL;
@@ -196,7 +203,7 @@ sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt)
 		if (conv == NULL && bare != NULL)
 			conv = purple_find_conversation_with_account(
 				PURPLE_CONV_TYPE_IM, bare, account);
-		if (conv == NULL)
+		if (conv == NULL && visible)
 			conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account,
 			                               bare ? bare : to);
 	}
@@ -210,10 +217,13 @@ sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt)
 		purple_conversation_write(conv, NULL, line,
 		                          PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_ERROR,
 		                          time(NULL));
-	} else {
+	} else if (visible) {
 		purple_debug_warning(SM_DBG, "no conversation for %s\n", to);
 		purple_notify_warning(NULL, _("XMPP stream management"),
 		                      _("Message may not have been delivered"), line);
+	} else {
+		purple_debug_warning(SM_DBG, "unacked at sign-off, no open "
+		                     "conversation with %s\n", to);
 	}
 	g_free(line);
 	g_free(escaped);
@@ -225,7 +235,7 @@ sm_report_unacked(PurpleAccount *account, xmlnode *stanza, const char *fmt)
 /* Reports and forgets everything still unacked; @a fmt takes the text. */
 static void
 sm_report_queue(PurpleAccount *account, SmSession *s, const char *why,
-                const char *fmt)
+                const char *fmt, gboolean visible)
 {
 	GList *items, *l;
 	guint32 unacked;
@@ -234,7 +244,7 @@ sm_report_queue(PurpleAccount *account, SmSession *s, const char *why,
 	unacked = x2_sm_state_unacked(s->st);
 	items = x2_sm_state_take_queue(s->st);
 	for (l = items; l != NULL; l = l->next) {
-		if (sm_report_unacked(account, l->data, fmt))
+		if (sm_report_unacked(account, l->data, fmt, visible))
 			messages++;
 	}
 	g_list_free_full(items, sm_item_free);
@@ -256,7 +266,8 @@ sm_connection_error_cb(PurpleConnection *gc, PurpleConnectionError reason,
 	if (s == NULL)
 		return;
 	sm_report_queue(account, s, "connection lost",
-		_("Connection lost: this message may not have been delivered: %s"));
+		_("Connection lost: this message may not have been delivered: %s"),
+		TRUE);
 }
 
 void
@@ -305,7 +316,7 @@ jabber_sm_close(JabberStream *js)
 		sm_report_queue(purple_connection_get_account(js->gc), s,
 			"signed off",
 			_("Signed off before the server confirmed this message, it "
-			  "may not have been delivered: %s"));
+			  "may not have been delivered: %s"), FALSE);
 	g_hash_table_remove(sm_sessions, purple_connection_get_account(js->gc));
 }
 

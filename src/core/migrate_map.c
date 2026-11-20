@@ -9,6 +9,7 @@
 #include "util.h"
 
 #include "migrate_map.h"
+#include "jid.h"
 
 static gboolean
 kind_of(PurplePrefType type, X2MigrateKind *kind)
@@ -106,28 +107,10 @@ x2_migrate_value_allowed(const X2MigrateOpt *opt, const char *value)
 	return FALSE;
 }
 
-/* Length of the bare JID part of a username (up to the first '/'). */
-static gsize
-bare_len(const char *s)
-{
-	const char *slash = strchr(s, '/');
-
-	return slash != NULL ? (gsize)(slash - s) : strlen(s);
-}
-
 gboolean
 x2_migrate_same_username(const char *a, const char *b)
 {
-	const char *ra, *rb;
-	gsize la, lb;
-
 	g_return_val_if_fail(a != NULL && b != NULL, FALSE);
 
-	la = bare_len(a);
-	lb = bare_len(b);
-	if (la != lb || g_ascii_strncasecmp(a, b, la) != 0)
-		return FALSE;
-	ra = a[la] == '/' ? a + la + 1 : "";
-	rb = b[lb] == '/' ? b + lb + 1 : "";
-	return strcmp(ra, rb) == 0;
+	return x2_jid_same_bare(a, b);
 }

@@ -20,13 +20,14 @@
 #include "eventloop.h"
 
 #include "core/mam_proto.h"
+#include "core/replace_parse.h"
 #include "ext/mam.h"
 #include "iq.h"
 #include "jutil.h"
 #include "namespaces.h"
 
 /* Seconds a join waits for the room's disco#info before going ahead */
-#define X2_MAM_ROOM_DISCO_SECS 10
+#define X2_MAM_ROOM_DISCO_SECS 5
 
 /* Default of the account option mam_muc_threshold_days */
 #define X2_MAM_ROOM_THRESHOLD_DAYS 2
@@ -117,6 +118,8 @@ room_info_cb(JabberStream *js, const char *from, JabberIqType type,
 			flags |= X2_MAM_ROOM_MAM;
 		if (x2_mam_has_feature(query, X2_NS_MAM_EXTENDED))
 			flags |= X2_MAM_ROOM_EXTENDED;
+		if (x2_mam_has_feature(query, X2_NS_OCCUPANT_ID))
+			flags |= X2_MAM_ROOM_OCCUPANT_ID;
 		/* The room stamps and strips stanza-ids by=room */
 		if ((flags & X2_MAM_ROOM_MAM) || x2_mam_has_feature(query, NS_SID))
 			x2_ext_archive_trust(js, room);
@@ -234,6 +237,15 @@ x2_mam_muc_chat_joined(JabberStream *js, JabberChat *chat)
 	x2_mam_sync_begin(a);
 	x2_mam_muc_first_query(a);
 	g_free(room);
+}
+
+gboolean
+x2_mam_room_has_occupant_id(JabberStream *js, const char *room)
+{
+	X2MamState *st = x2_mam_state(js);
+
+	return st != NULL && room != NULL &&
+	       (room_flags(st, room) & X2_MAM_ROOM_OCCUPANT_ID) != 0;
 }
 
 X2MamArchive *

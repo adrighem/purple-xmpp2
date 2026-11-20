@@ -81,13 +81,17 @@ x2_dedup_add(X2Dedup *d, const char *key)
 }
 
 char *
-x2_dedup_make_key(const char *trusted_stanza_id, gboolean outgoing,
-                  const char *peer, const char *origin_id)
+x2_dedup_make_key(const char *trusted_stanza_id, const char *archive,
+                  gboolean outgoing, const char *peer,
+                  const char *origin_id)
 {
 	const char *dir = outgoing ? "out" : "in";
 
-	if (trusted_stanza_id != NULL && *trusted_stanza_id != '\0')
-		return g_strconcat("S:", trusted_stanza_id, NULL);
+	/* a stanza-id is unique per archive only: two archives (our account
+	 * and a room, or two rooms) may well issue the same one */
+	if (trusted_stanza_id != NULL && *trusted_stanza_id != '\0' &&
+	    archive != NULL && *archive != '\0')
+		return g_strconcat("S:", archive, ":", trusted_stanza_id, NULL);
 	if (peer == NULL || *peer == '\0')
 		return NULL;
 	if (origin_id != NULL && *origin_id != '\0')

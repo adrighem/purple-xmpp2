@@ -151,7 +151,7 @@ src/
     statefile.c         persistence glue: path, debounce, account-removed
     receipts.c          XEP-0184
     markers.c           XEP-0333
-    peerutil.c          caps policy and notice line shared by receipts, markers
+    peerutil.c          caps policy, subscription gate, notice line (receipts, markers)
     correct.c           XEP-0308 inbound check, marker, outbound hook
     correct_cmd.c       /correct command
     upload.c            XEP-0363 (PurpleXfer glue)
@@ -160,6 +160,7 @@ src/
                              no connection, no UI. Unit tested.
     sid.c               XEP-0359 stanza-id (with by check) / origin-id
     forward.c           XEP-0297 unwrap, XEP-0203 delay parse
+    jid.c               bare-JID helpers (bare part, equality) used by the others
     carbon_parse.c      classify carbon, reject forged
     mam_proto.c         build query (form + RSM), parse <result>, <fin>
     dedup.c             bounded LRU set of message keys
@@ -456,7 +457,7 @@ a later self-presence update; it then queries the room archive (`to=room`):
 
 Implementation (M4): `ext/mam_muc.c`. `jabber_join_chat()` asks the
 `chat_joining` hook, which sends the room `disco#info` and holds the join
-(at most 10 s; on timeout the join goes ahead as a room without MAM); the
+(at most 5 s; on timeout the join goes ahead as a room without MAM); the
 answer is cached per stream (errors are not, a room created by the join is
 asked again next time), marks the room trusted for stanza-ids
 (`x2_ext_archive_trust()`) when it advertises `urn:xmpp:mam:2` or
@@ -472,7 +473,9 @@ cursor), page size 50, cap 10 pages, cursor in the state file section
 with the room's active queryid and an inner `from` of the room, are always
 delivered as groupchat into the room (`x2_mam_room_result_check()` forces
 the inner `type`), and are never treated as 1:1. Results of a last-page
-query are held until its `<fin/>` decides the notice. Live groupchat of a
+query are held until its `<fin/>` decides the notice, and are capped at the
+`max` asked for (`x2_mam_page_limit()`): results beyond it are dropped as
+forged, with a debug line, and do not restart the watchdog. Live groupchat of a
 MAM room is deduplicated (`S:` key of the room's stanza-id) and queued while
 the room syncs; rooms without MAM are not touched. Our own messages sent
 from another device come back from our nick and are marked sent by
@@ -499,7 +502,9 @@ debounce (see 9); exactly once otherwise.
 
 ### 7.3 Dedup keys
 
-- `S:<stanza-id>` when the message has a trusted stanza-id (XEP-0359:
+- `S:<archive bare JID>:<stanza-id>` when the message has a trusted
+  stanza-id (stanza-ids are unique within one archive only, so two archives
+  that issue the same id do not collide; XEP-0359:
   `by` equals the archive JID and the archive advertised `urn:xmpp:sid:0` or
   `urn:xmpp:mam:2`; otherwise stanza-ids are spoofable and ignored). Every
   message has an archive, live ones included: our own bare JID, or the room
@@ -521,7 +526,9 @@ debounce (see 9); exactly once otherwise.
 Two stores: an in-memory LRU of 4096 keys per stream (`core/dedup.c`), and a
 persisted ring of the last 256 non-`S:` keys per archive in the state file,
 which covers exactly the messages the cursor cannot (own sends and sent
-carbons after the last received stanza-id).
+carbons after the last received stanza-id). Ring entries are opaque strings:
+one written by an older version (`S:<id>` without the archive) never matches
+a new key and ages out of the ring.
 
 ### 7.4 Delivery receipts (XEP-0184)
 
@@ -532,9 +539,12 @@ known from caps and lacks `urn:xmpp:receipts`, or is a room occupant
 256 entry set. Incoming request (answered by the `receipts-answer` entry,
 which runs before `mam`, so a live message queued or deduplicated during
 the MAM catch-up is still answered, on arrival): reply
-`<received id=.../>` to the full JID only when `src=LIVE`, `type!='groupchat'`
-and the sender is in the roster with presence subscription (no presence
-leak to strangers; same as Gajim). Incoming `<received/>`: emit the purple
+`<received id=.../>` to the full JID only when `src=LIVE` and `dir=IN`
+(a stanza from the server's offline store, `delayed`, is still LIVE: its
+sender is waiting for the receipt, so it gets it at login; MAM results and
+carbons never do), `type!='groupchat'` and the sender is in the roster with
+presence subscription (no presence leak to strangers; same as Gajim; the
+check is `x2_peer_sees_us()`, shared with markers). Incoming `<received/>`: emit the purple
 signal `xmpp2-receipt` (account, bare peer, id), only for a (peer, id) we
 asked for and only when `x2_msg_is_live_incoming()`. Pure receipts are
 consumed whatever their source. Pidgin 2 cannot decorate an
@@ -548,7 +558,10 @@ can render ticks from the signals later.
 Implemented in `ext/markers.c`. Outgoing messages get `<markable/>` under the
 same caps rule as receipts. Incoming markable messages (live and MAM, not
 carbons: the other device marks those) record the newest per contact (by
-`ts`); a `displayed` is sent to the bare JID at most once per remembered id.
+`ts`); a `displayed` is sent to the bare JID at most once per remembered id,
+and only to contacts with presence subscription FROM (`x2_peer_sees_us()`,
+the receipts gate): only those are recorded, in a table capped at 256
+contacts that drops the least recently updated one.
 Sending `displayed`: connect to
 `conversation-updated` with `PURPLE_CONV_UPDATE_UNSEEN`; Pidgin sets the
 conversation data `unseen-count` to 0 when the user focuses the window
@@ -569,7 +582,10 @@ with a body is recorded in a bounded log (2048 ids per stream, oldest
 dropped first) as (conversation `peer`, id) -> author, for `id`,
 `origin-id` and the trusted `stanza-id`. The first author of an id stands.
 The author is the bare JID in 1:1 and, in a room, the XEP-0421 occupant-id
-when present, else the full JID (room/nick).
+when present and the room advertises `urn:xmpp:occupant-id:0` in its
+`disco#info` (cached by `mam_muc.c`, `x2_mam_room_has_occupant_id()`: a room
+that does not advertise it does not strip forged ids), else the full JID
+(room/nick).
 
 Incoming `<replace id=X>` with a body is accepted only if X was recorded in
 the same conversation from the same author. An accepted correction is
@@ -626,10 +642,12 @@ request, and an empty file is refused. Then:
    `Content-Length`, slot headers, `Connection: close`): honours the account
    proxy, https through the purple SSL plugin (default port 443, checked),
    `include_headers=TRUE` to read the status line, `max_len` 64 KiB for the
-   response. Only `201 Created` is success; anything else, including a
-   redirect, is a failure: libpurple follows any `Location` header with a
-   GET (possibly over plain http) and that GET could answer 200. A server
-   that sends `Location` even with its 201 is therefore not supported.
+   response. 200, 201 and 204 are success (`x2_upload_put_status_ok()`:
+   XEP-0363 says 201, some servers differ); a 3xx fails with its own
+   "redirected" message and anything else fails with the code. libpurple
+   follows any `Location` header with a GET (possibly over plain http) and we
+   would see the status of that GET, so a server that redirects the PUT is
+   not supported.
 4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
    `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
    (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1
@@ -800,15 +818,30 @@ main loop with the accounts and, in Pidgin, the buddy list window present.
   `/plugins/prpl/xmpp2/migration_never` is false: if some `prpl-jabber`
   account has no `prpl-xmpp2` twin, `purple_request_action()` asks "Copy N
   XMPP accounts to XMPP (xmpp2)?" with Copy, Not now, Never. Never sets the
-  pref, Not now does nothing (asks again next start). Test hook: the pref
+  pref, Not now does nothing (asks again next start). Test hook (only in
+  `-DXMPP2_TEST_HOOKS=ON` builds): the pref
   `/plugins/prpl/xmpp2/migration_offer_any_ui` makes any UI get the offer.
-- The same copy is always available as the prpl action "Copy XMPP
-  accounts to xmpp2..." (`jabber_actions()`, so on every connected xmpp2
-  account, every UI). It asks first (Copy, Cancel), tells the result with
-  `purple_notify_info()`, and says so when there is nothing to copy.
+- The same copy is available as the action "Copy XMPP accounts to
+  xmpp2..." in two places. (a) The prpl action (`jabber_actions()`), in the
+  menu of every connected xmpp2 account, every UI. Pidgin shows prpl actions
+  only for a connected account of that prpl (`gtkblist.c` 8249), so after
+  "Never", or with no xmpp2 account, it cannot be reached. (b) A plugin
+  action under Tools > Plugin Actions > XMPP (xmpp2), which needs no
+  account. Pidgin's Tools menu skips protocol plugins
+  (`pidgin_blist_update_plugin_actions()`), so `plugin_init` registers a
+  second, standard-type plugin with `purple_plugin_new()` and
+  `purple_plugin_register()`: id `core-xmpp2-migrate`, flag
+  `PURPLE_PLUGIN_FLAG_INVISIBLE` (not in the plugin list, not saved, cannot be
+  unloaded by the user), no path, loaded at once and destroyed in
+  `plugin_uninit` (its `PurplePluginInfo` lives in our module, so it must go
+  before the module does). Both entries ask first (Copy, Cancel), tell the
+  result with `purple_notify_info()`, and say so when there is nothing to
+  copy.
 - Clone: username (JID and resource), saved password (only if the original
-  remembers it; never logged), alias, user info, buddy icon path, check-mail
-  flag, proxy info, and each setting of `x2_migrate_map_options()`: the
+  remembers it; never logged), alias, user info, buddy icon path, the
+  account avatar (`purple_buddy_icons_find_account_icon(orig)` and
+  `purple_buddy_icons_set_account_icon(clone, copy)`, so the clone publishes
+  the same picture), check-mail flag, proxy info, and each setting of `x2_migrate_map_options()`: the
   options of the loaded prpl-jabber (`protocol_options`) that xmpp2 declares
   under the same key with the same kind (string or list, int, bool). A value
   a list option does not offer is skipped. libpurple cannot tell "unset" from
@@ -827,7 +860,9 @@ main loop with the accounts and, in Pidgin, the buddy list window present.
   if the original was enabled (the same full JID twice would make the server
   kick one session with a resource conflict, in a loop). Never deleted.
   Idempotent: an account is skipped when a `prpl-xmpp2` account with the
-  same username exists (bare JID case-insensitive, resource exact).
+  same bare JID exists (case-insensitive, the resource is ignored: it is only
+  how the account logs in, and a second session with it would conflict), so
+  two prpl-jabber accounts that differ only in the resource get one copy.
 - State: `[meta] initial=cursor-only` is written to the clone's state file
   at creation (9), so the first catch-up only stores a cursor and shows no
   history (7.2).

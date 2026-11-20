@@ -32,14 +32,6 @@ typedef struct {
 
 X2CorrectState *x2_correct_state(JabberStream *js);
 
-/**
- * Conversation key of a JID we send to: the bare JID, except for a private
- * message to a room occupant, which keeps the full JID (as in msgctx.c).
- *
- * @return A newly allocated string, or NULL for an invalid JID.
- */
-char *x2_correct_peer(JabberStream *js, const char *jid, gboolean groupchat);
-
 /** Registers and unregisters the /correct command. */
 void x2_correct_cmd_register(void);
 void x2_correct_cmd_unregister(void);

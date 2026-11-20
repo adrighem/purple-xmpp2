@@ -35,6 +35,8 @@
  * never send it, so the watchdog fires (tests/integration/test_mam_recovery.sh,
  * test_mam_muc_bulk.sh). */
 #define X2_MAM_STALL_ENV "XMPP2_TEST_MAM_STALL"
+/* Test hook: results of a last page that are accepted (test_mam_muc_bulk.sh) */
+#define X2_MAM_PAGE_LIMIT_ENV "XMPP2_TEST_MAM_PAGE_LIMIT"
 #endif
 
 static X2Store *
@@ -336,11 +338,26 @@ query_cb(JabberStream *js, const char *from, JabberIqType type,
 }
 
 static guint
-page_size(X2MamArchive *a, X2MamQueryKind kind)
+page_size(const X2MamArchive *a, X2MamQueryKind kind)
 {
 	if (kind == X2_MAMQ_CURSOR_ONLY || kind == X2_MAMQ_PROBE)
 		return 1;
 	return a->room ? X2_MAM_ROOM_PAGE_SIZE : X2_MAM_PAGE_SIZE;
+}
+
+guint
+x2_mam_page_limit(const X2MamArchive *a, X2MamQueryKind kind)
+{
+	guint max = page_size(a, kind);
+#ifdef XMPP2_TEST_HOOKS
+	/* Test hook: enforce a lower limit than the one asked for, as if the
+	 * archive returned more results than max. */
+	const char *env = g_getenv(X2_MAM_PAGE_LIMIT_ENV);
+
+	if (env != NULL && atoi(env) > 0 && (guint)atoi(env) < max)
+		max = (guint)atoi(env);
+#endif
+	return max;
 }
 
 void
@@ -378,6 +395,7 @@ x2_mam_sync_query(X2MamArchive *a, X2MamQueryKind kind, const char *after,
 	a->iq_id = g_strdup(iq->id);
 	a->kind = kind;
 	a->page_ts = 0;
+	a->page_results = 0;
 	x2_mam_sync_kick(a);
 
 	purple_debug_info(X2_MAM_DEBUG, "MAM query %s%s%s: %s after=%s "

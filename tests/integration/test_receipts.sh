@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 purple-xmpp2 contributors
 # M5: delivery receipts (XEP-0184). Harness (alice) against peers bob (roster
 # contact) and carol (stranger). Run with:
 #   PRPL=prpl-xmpp2 PLUGIN_DIR=build tests/integration/test_receipts.sh
@@ -111,19 +113,20 @@ else
 	echo "SKIP 2b: needs -DXMPP2_TEST_HOOKS=ON"
 fi
 
-# 3. A message that waited in offline storage (delayed) gets no receipt.
-run_peer bob --do "sendr alice@localhost offline-b" --do "sleep 1" >/dev/null
-peer_bg "$WORK/bob3.log" bob --stay 1 --do "no-stanza $RECEIVED 10"
+# 3. A message that waited in the server's offline store (delayed) is still
+# a live stanza: its sender (bob stays online) gets the receipt on login.
+peer_bg "$WORK/bob3.log" bob --stay 1 --do "sendr alice@localhost offline-b" \
+	--do "expect-stanza $RECEIVED 25"
 BOB_PID=$PEER_PID
 run_harness alice "${HARNESS_OPTS[@]}" <<SCRIPT
 connect 30
 expect-ev timeout=15 kind=recv text=offline-b
-sleep 6
-no-debug timeout=1 cat=xmpp2-receipts text=sent receipt for
+expect-debug cat=xmpp2-receipts timeout=10 text=sent receipt for
+sleep 1
 disconnect
 SCRIPT
-wait "$BOB_PID" || { cat "$WORK/bob3.log"; fail "receipt for a delayed message"; }
-pass "no receipt for offline (delayed) messages"
+wait "$BOB_PID" || { cat "$WORK/bob3.log"; fail "no receipt for an offline (delayed) message"; }
+pass "receipt for offline (delayed) messages on login"
 
 # 4. A carbon copy (bob wrote to our phone, the harness only gets a received
 # carbon) gets no receipt from the harness, although bob is subscribed.

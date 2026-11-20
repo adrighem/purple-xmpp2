@@ -5,8 +5,8 @@
  * @file correct.c XEP-0308 Last Message Correction: inbound and outbound
  *
  * libpurple cannot edit a line that was written, so an accepted correction
- * is shown as a new line with the text prefixed by X2_REPLACE_MARKER, and
- * logged like any message.  A correction is accepted only if the message it
+ * is shown as a new line with the text prefixed by "corrected: " (translated)
+ * and logged like any message.  A correction is accepted only if the message it
  * refers to was seen in the same conversation from the same author (bare JID
  * in 1:1, occupant-id or full JID in a room); anything else is shown as a
  * plain message, never as a correction (ARCHITECTURE 7.6, 9).
@@ -18,6 +18,7 @@
 #include "core/replace_parse.h"
 #include "core/sid.h"
 #include "ext/correct.h"
+#include "ext/mam.h"
 #include "jutil.h"
 #include "namespaces.h"
 
@@ -65,23 +66,6 @@ correct_plugin_uninit(PurplePlugin *plugin)
 	jabber_remove_feature(NS_CORRECTION);
 }
 
-char *
-x2_correct_peer(JabberStream *js, const char *jid, gboolean groupchat)
-{
-	JabberID *id = jabber_id_new(jid);
-	char *peer;
-
-	if (id == NULL)
-		return NULL;
-	if (id->resource != NULL && id->node != NULL && !groupchat &&
-	    jabber_chat_find(js, id->node, id->domain) != NULL)
-		peer = g_strdup(jid);
-	else
-		peer = jabber_id_get_bare_jid(id);
-	jabber_id_free(id);
-	return peer;
-}
-
 /* Remembers the ids a sender may later refer to (id, origin-id, stanza-id) */
 static void
 record_ids(X2CorrLog *log, const X2Msg *m, const char *sender)
@@ -121,8 +105,11 @@ correct_inbound(JabberStream *js, X2Msg *m)
 	    xmlnode_get_child(m->msg, "body") == NULL)
 		return X2_PASS;
 
+	/* an occupant-id counts only from a room that stamps and strips them */
 	sender = x2_replace_sender(m->msg, xmlnode_get_attrib(m->msg, "from"),
-	                           purple_strequal(type, "groupchat"));
+	                           purple_strequal(type, "groupchat"),
+	                           purple_strequal(type, "groupchat") &&
+	                           x2_mam_room_has_occupant_id(js, m->archive));
 	if (sender == NULL)
 		return X2_PASS;
 
@@ -134,7 +121,8 @@ correct_inbound(JabberStream *js, X2Msg *m)
 	}
 
 	v = x2_corrlog_check(st->log, m->peer, target, sender);
-	if (v == X2_CORR_OK && x2_replace_mark_body(m->msg)) {
+	/* the msgid is X2_REPLACE_MARKER (core/ has no gettext) */
+	if (v == X2_CORR_OK && x2_replace_mark_body(m->msg, _("corrected: "))) {
 		purple_debug_info(DBG, "correction of %s accepted in %s\n",
 		                  target, m->peer);
 	} else {
@@ -166,8 +154,8 @@ correct_outbound(JabberStream *js, xmlnode *message, X2Out *o)
 		return;
 	}
 
-	peer = x2_correct_peer(js, xmlnode_get_attrib(message, "to"),
-	                       o->groupchat);
+	peer = x2_msg_peer_of(js, xmlnode_get_attrib(message, "to"),
+	                      xmlnode_get_attrib(message, "type"), message);
 	if (peer == NULL)
 		return;
 	x2_corrlog_set_last_sent(st->log, peer, o->id);

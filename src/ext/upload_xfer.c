@@ -156,11 +156,13 @@ put_result(PurpleXfer *xfer, const char *response, const char *error)
 		return;
 	}
 	/*
-	 * Only 201 Created is success (XEP-0363).  libpurple follows any
-	 * Location header with a GET, possibly over plain http, and that GET
-	 * would answer 200 with somebody's content: a redirect is a failure.
+	 * 200, 201 and 204 are success (XEP-0363 says 201, servers differ).  A
+	 * redirect is a failure and has its own message.  libpurple follows a
+	 * Location header with a GET, possibly over plain http, and we then see
+	 * the status of that GET: such a server is not supported, and one that
+	 * answers 3xx without Location is reported as a redirect.
 	 */
-	if (code != 201) {
+	if (!x2_upload_put_status_ok(code)) {
 		if (code == 401 || code == 403)
 			ux_failf(xfer, _("the upload server refused the file (HTTP %d)"), code);
 		else if (code == 413)
