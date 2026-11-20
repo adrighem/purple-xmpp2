@@ -22,6 +22,7 @@
 #include "core/dedup.h"
 #include "core/receipt_parse.h"
 #include "ext/ext.h"
+#include "ext/msgctx.h"
 #include "ext/peerutil.h"
 #include "jutil.h"
 #include "namespaces.h"
@@ -49,8 +50,9 @@ receipts_plugin_init(PurplePlugin *plugin)
 		purple_value_new(PURPLE_TYPE_STRING),
 		purple_value_new(PURPLE_TYPE_STRING));
 
-	/* account, bare JID of the contact, id of the message, plain body;
-	 * emitted while sending, before the UI writes the sent line */
+	/* account, conversation peer (bare JID of the contact, or room/nick for
+	 * a MUC private message), id of the message, plain body; emitted while
+	 * sending, before the UI writes the sent line */
 	purple_signal_register(plugin, "xmpp2-sent-message",
 		purple_marshal_VOID__POINTER_POINTER_POINTER_POINTER, NULL, 4,
 		purple_value_new(PURPLE_TYPE_SUBTYPE, PURPLE_SUBTYPE_ACCOUNT),
@@ -94,19 +96,21 @@ emit_sent_message(JabberStream *js, xmlnode *message, const char *to,
                   const char *id)
 {
 	PurpleAccount *account = purple_connection_get_account(js->gc);
-	char *bare = jabber_get_bare_jid(to);
+	/* the conversation's name: bare JID, room/nick for a MUC private message */
+	char *peer = x2_msg_peer_of(js, to, xmlnode_get_attrib(message, "type"),
+	                            message);
 	xmlnode *body_node = xmlnode_get_child(message, "body");
 	char *body = body_node ? xmlnode_get_data(body_node) : NULL;
 
-	if (bare != NULL && signal_plugin != NULL) {
+	if (peer != NULL && signal_plugin != NULL) {
 		purple_debug_info(LOG, "signal xmpp2-sent-message account=%s "
 		                  "peer=%s id=%s\n",
-		                  purple_account_get_username(account), bare, id);
+		                  purple_account_get_username(account), peer, id);
 		purple_signal_emit(signal_plugin, "xmpp2-sent-message", account,
-		                   bare, id, body ? body : "");
+		                   peer, id, body ? body : "");
 	}
 	g_free(body);
-	g_free(bare);
+	g_free(peer);
 }
 
 static void

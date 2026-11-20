@@ -463,7 +463,7 @@ Acceptance:
 ## M13: Pidgin ticks plugin `pidgin-xmpp2-ticks` (v0.2.0) (done)
 
 Optional GTK 2 plugin in `pidgin-plugin/`, design in ARCHITECTURE 7.9. The
-prpl gains one signal, `xmpp2-sent-message` (account, bare peer, id, body),
+prpl gains one signal, `xmpp2-sent-message` (account, peer, id, body),
 emitted while an outgoing 1:1 message with a body is sent.
 
 Acceptance:

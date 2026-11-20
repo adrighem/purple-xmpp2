@@ -90,6 +90,62 @@ test_failed_needs_attempt(void)
 	g_assert_cmpint(r.phase, ==, X2_SM_RESUME_IDLE);
 }
 
+static void
+test_reply_ok(void)
+{
+	/* only after our <resume/> and after SASL */
+	g_assert_true(x2_sm_resume_reply_ok(TRUE, TRUE));
+	g_assert_false(x2_sm_resume_reply_ok(FALSE, TRUE));
+	g_assert_false(x2_sm_resume_reply_ok(TRUE, FALSE));
+	g_assert_false(x2_sm_resume_reply_ok(FALSE, FALSE));
+}
+
+static void
+test_parse_h(void)
+{
+	guint32 h = 77;
+	const char *bad[] = { NULL, "", " 5", "5 ", "+5", "-1", "0x10", "1e3",
+		"5.0", "abc", "4294967296", "99999999999999999999", NULL };
+	guint i;
+
+	g_assert_true(x2_sm_parse_h("0", &h));
+	g_assert_cmpuint(h, ==, 0);
+	g_assert_true(x2_sm_parse_h("25", &h));
+	g_assert_cmpuint(h, ==, 25);
+	g_assert_true(x2_sm_parse_h("007", &h));
+	g_assert_cmpuint(h, ==, 7);
+	g_assert_true(x2_sm_parse_h("4294967295", &h));
+	g_assert_cmpuint(h, ==, G_MAXUINT32);
+	h = 77;
+	g_assert_false(x2_sm_parse_h(NULL, &h));
+	for (i = 1; bad[i] != NULL; i++) {
+		g_assert_false(x2_sm_parse_h(bad[i], &h));
+		g_assert_cmpuint(h, ==, 77);	/* untouched on refusal */
+	}
+}
+
+static void
+test_id_log(void)
+{
+	char *s;
+
+	s = x2_sm_id_log("0f3a9c1e-72b4-4d55-8e21-aa00bb11cc22");
+	g_assert_cmpstr(s, ==, "0f3a...");
+	g_free(s);
+	s = x2_sm_id_log("abcd");
+	g_assert_cmpstr(s, ==, "...");
+	g_free(s);
+	s = x2_sm_id_log("abcde");
+	g_assert_cmpstr(s, ==, "abcd...");
+	g_free(s);
+	s = x2_sm_id_log("");
+	g_assert_cmpstr(s, ==, "...");
+	g_free(s);
+	s = x2_sm_id_log(NULL);
+	g_assert_cmpstr(s, ==, "(none)");
+	g_free(s);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -100,5 +156,8 @@ main(int argc, char **argv)
 	g_test_add_func("/smresume/window", test_window_from_max);
 	g_test_add_func("/smresume/failed-needs-attempt",
 	                test_failed_needs_attempt);
+	g_test_add_func("/smresume/reply-ok", test_reply_ok);
+	g_test_add_func("/smresume/parse-h", test_parse_h);
+	g_test_add_func("/smresume/id-log", test_id_log);
 	return g_test_run();
 }

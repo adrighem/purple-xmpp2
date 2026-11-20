@@ -31,6 +31,13 @@ void jabber_sm_resume_features(JabberStream *js, xmlnode *packet);
 /* Sends <resume previd h/> on the authenticated stream. */
 void jabber_sm_send_resume(JabberStream *js);
 
+/*
+ * May <resumed/> or <failed/> be acted on?  Only while resuming, after
+ * SASL and after this stream sent <resume/>.  Otherwise the caller treats
+ * the packet as a protocol error.
+ */
+gboolean jabber_sm_resume_reply_ok(JabberStream *js);
+
 /* <resumed h/>: trim what the server handled, resend the rest in order. */
 void jabber_sm_resume_resumed(JabberStream *js, xmlnode *packet);
 

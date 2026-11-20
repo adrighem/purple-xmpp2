@@ -4,6 +4,8 @@
 /* XEP-0198 resumption policy, see smresume.h. */
 #include "smresume.h"
 
+#include <string.h>
+
 guint
 x2_sm_resume_window(guint server_max)
 {
@@ -61,4 +63,34 @@ x2_sm_resume_reset(X2SmResume *r)
 	r->phase = X2_SM_RESUME_IDLE;
 	r->attempts = 0;
 	r->deadline = 0;
+}
+
+gboolean
+x2_sm_resume_reply_ok(gboolean resume_sent, gboolean post_auth)
+{
+	return resume_sent && post_auth;
+}
+
+gboolean
+x2_sm_parse_h(const char *s, guint32 *out)
+{
+	guint64 v;
+
+	if (s == NULL || !g_ascii_isdigit(s[0]))
+		return FALSE;
+	if (!g_ascii_string_to_unsigned(s, 10, 0, G_MAXUINT32, &v, NULL))
+		return FALSE;
+	*out = (guint32)v;
+	return TRUE;
+}
+
+char *
+x2_sm_id_log(const char *id)
+{
+	if (id == NULL)
+		return g_strdup("(none)");
+	/* an id of four characters or fewer would be shown whole */
+	if (strlen(id) <= 4)
+		return g_strdup("...");
+	return g_strdup_printf("%.4s...", id);
 }

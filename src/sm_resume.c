@@ -42,6 +42,7 @@ struct _JabberSmResume {
 	guint attempt_timer;	/* the running attempt's timeout */
 	gint next_delay;	/* ms, for the timer after the teardown */
 	gboolean gave_up;	/* connection error raised, waiting for close */
+	gboolean resume_sent;	/* <resume/> went out on this stream */
 };
 
 static gint64
@@ -129,6 +130,7 @@ attempt_cb(gpointer data)
 	purple_debug_info(SM_DBG, "resume attempt %u of %u: reconnecting\n",
 	                  r->policy.attempts, X2_SM_RESUME_ATTEMPTS);
 	js->transport_down = FALSE;
+	r->resume_sent = FALSE;
 	r->attempt_timer = purple_timeout_add(X2_SM_RESUME_ATTEMPT_TIMEOUT_MS,
 	                                      attempt_timeout_cb, js);
 	/* May fail at once and come back through jabber_stream_lost(). */
@@ -227,7 +229,7 @@ jabber_sm_send_resume(JabberStream *js)
 	X2SmState *st = jabber_sm_get_state(js);
 	const char *id = jabber_sm_get_resume_id(js);
 	xmlnode *resume;
-	char *h;
+	char *h, *idlog;
 
 	if (st == NULL || id == NULL) {
 		jabber_sm_resume_give_up(js, _("Lost connection with server"));
@@ -238,11 +240,24 @@ jabber_sm_send_resume(JabberStream *js)
 	xmlnode_set_namespace(resume, NS_STREAM_MANAGEMENT);
 	xmlnode_set_attrib(resume, "previd", id);
 	xmlnode_set_attrib(resume, "h", h);
-	purple_debug_info(SM_DBG, "resume previd=%s h=%s, %u unacked\n", id, h,
-	                  x2_sm_state_unacked(st));
+	idlog = x2_sm_id_log(id);
+	purple_debug_info(SM_DBG, "resume previd=%s h=%s, %u unacked\n", idlog,
+	                  h, x2_sm_state_unacked(st));
+	g_free(idlog);
+	js->sm_resume->resume_sent = TRUE;
 	jabber_send(js, resume);
 	xmlnode_free(resume);
 	g_free(h);
+}
+
+gboolean
+jabber_sm_resume_reply_ok(JabberStream *js)
+{
+	JabberSmResume *r = js->sm_resume;
+
+	return r != NULL && !r->gave_up
+	       && x2_sm_resume_reply_ok(r->resume_sent,
+	                                js->state == JABBER_STREAM_POST_AUTH);
 }
 
 void
@@ -254,18 +269,21 @@ jabber_sm_resume_resumed(JabberStream *js, xmlnode *packet)
 	GList *resend = NULL, *l;
 	guint trimmed = 0, n = 0;
 	X2SmResend res;
+	guint32 h = 0;
+	char *idlog;
 
-	if (st == NULL || hs == NULL
+	if (st == NULL || !x2_sm_parse_h(hs, &h)
 	    || !purple_strequal(previd, jabber_sm_get_resume_id(js))) {
+		idlog = x2_sm_id_log(previd);
 		purple_debug_error(SM_DBG, "<resumed previd='%s' h='%s'/> does "
-		                   "not match our session\n",
-		                   previd ? previd : "", hs ? hs : "");
+		                   "not match our session or 'h' is invalid\n",
+		                   idlog, hs ? hs : "");
+		g_free(idlog);
 		jabber_sm_resume_give_up(js,
 			_("Lost connection with server: invalid stream resumption"));
 		return;
 	}
-	res = x2_sm_state_resumed(st, (guint32)strtoul(hs, NULL, 10), &trimmed,
-	                          &resend);
+	res = x2_sm_state_resumed(st, h, &trimmed, &resend);
 	if (res != X2_SM_RESEND_OK) {
 		purple_debug_error(SM_DBG, "<resumed h='%s'/>: %s\n", hs,
 			res == X2_SM_RESEND_H_TOO_HIGH
@@ -287,8 +305,10 @@ jabber_sm_resume_resumed(JabberStream *js, xmlnode *packet)
 		n++;
 	}
 	g_list_free(resend);
+	idlog = x2_sm_id_log(previd);
 	purple_debug_info(SM_DBG, "resumed previd=%s h=%s: %u acked, %u "
-	                  "resent\n", previd, hs, trimmed, n);
+	                  "resent\n", idlog, hs, trimmed, n);
+	g_free(idlog);
 	if (n > 0)
 		jabber_sm_request_ack(js);
 	/* A status change during the gap was not sent (no roster then);
@@ -302,6 +322,7 @@ jabber_sm_resume_failed(JabberStream *js, xmlnode *packet)
 	X2SmState *st = jabber_sm_get_state(js);
 	const char *hs = xmlnode_get_attrib(packet, "h");
 	const char *cond = "(none)";
+	guint32 h;
 	guint trimmed = 0;
 	xmlnode *c;
 
@@ -312,8 +333,10 @@ jabber_sm_resume_failed(JabberStream *js, xmlnode *packet)
 		}
 	}
 	/* XEP-0198 1.6: h on <failed/> says what the old session handled */
-	if (hs != NULL && st != NULL
-	    && !x2_sm_state_ack(st, (guint32)strtoul(hs, NULL, 10), &trimmed))
+	if (hs != NULL && !x2_sm_parse_h(hs, &h))
+		purple_debug_error(SM_DBG, "<failed h='%s'> is not a valid "
+		                   "count, ignored\n", hs);
+	else if (hs != NULL && st != NULL && !x2_sm_state_ack(st, h, &trimmed))
 		purple_debug_error(SM_DBG, "<failed h='%s'> is beyond %u sent\n",
 		                   hs, x2_sm_state_outbound(st));
 	purple_debug_warning(SM_DBG, "resume failed (%s) h=%s: %u acked, %u "

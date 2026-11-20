@@ -77,6 +77,13 @@ gboolean x2_upload_send_done(const X2UploadSend *s);
  */
 gboolean x2_upload_send_progress_due(X2UploadSend *s);
 
+/**
+ * Is @a err (errno of a failed read or write) "nothing happened, wait for
+ * the next socket event" rather than a broken connection?  EAGAIN and
+ * EWOULDBLOCK, and EINTR (a signal interrupted the call).
+ */
+gboolean x2_upload_io_retry(int err);
+
 typedef enum {
 	X2_UPLOAD_RESP_MORE,  /* feed more data */
 	X2_UPLOAD_RESP_DONE,  /* ::code holds the final status */

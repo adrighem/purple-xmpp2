@@ -174,6 +174,13 @@ class Peer(slixmpp.ClientXMPP):
         self._chat(to, text, [f"<request xmlns='{NS_RECEIPTS}'/>",
                               f"<markable xmlns='{NS_MARKERS}'/>"])
 
+    async def _server_caught_up(self) -> None:
+        """Round trip to the server: it answers only after it handled every
+        stanza sent before.  Without it the peer can exit (and close the
+        stream) while part of a big burst is still unsent or unprocessed,
+        which lost messages in the bulk MAM tests."""
+        await self.plugin["xep_0199"].ping(timeout=self.timeout)
+
     async def act_sendmany(self, rest: str) -> None:
         to, n, prefix, *gap = rest.split()
         for i in range(1, int(n) + 1):
@@ -182,6 +189,7 @@ class Peer(slixmpp.ClientXMPP):
                 await asyncio.sleep(int(gap[0]) / 1000)
             elif i % 50 == 0:
                 await asyncio.sleep(0.05)
+        await self._server_caught_up()
         print(f"PEER sent {n} to {to}", flush=True)
 
     async def act_correct(self, rest: str) -> None:
@@ -204,6 +212,7 @@ class Peer(slixmpp.ClientXMPP):
                 await asyncio.sleep(int(gap[0]) / 1000)
             elif i % 50 == 0:
                 await asyncio.sleep(0.05)
+        await self._server_caught_up()
         print(f"PEER sent {n} to {room}", flush=True)
 
     async def act_befriend(self, rest: str) -> None:

@@ -22,6 +22,7 @@ Package: purple-xmpp2
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Recommends: pidgin
+Suggests: pidgin-xmpp2-ticks
 Description: XMPP protocol plugin with message archive catch-up for libpurple 2
  purple-xmpp2 is a third-party XMPP protocol plugin (prpl-xmpp2) for Pidgin
  and other libpurple 2 clients. It is forked from the built-in jabber plugin

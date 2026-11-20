@@ -55,6 +55,7 @@
 #include "signals.h"
 #include "stream_management.h"
 #include "sm_resume.h"
+#include "smresume.h"
 #include "smstate.h"
 
 #define SM_DBG "xmpp2-sm"
@@ -332,6 +333,7 @@ sm_handle_enabled(JabberStream *js, SmSession *s, xmlnode *packet)
 	const char *id = xmlnode_get_attrib(packet, "id");
 	const char *max = xmlnode_get_attrib(packet, "max");
 	const char *resume = xmlnode_get_attrib(packet, "resume");
+	char *idlog;
 
 	g_free(s->resume_id);
 	g_free(s->resume_location);
@@ -341,9 +343,11 @@ sm_handle_enabled(JabberStream *js, SmSession *s, xmlnode *packet)
 	s->resumable = purple_strequal(resume, "true")
 	               || purple_strequal(resume, "1");
 	js->sm_state = SM_ENABLED;
+	idlog = x2_sm_id_log(id);
 	purple_debug_info(SM_DBG, "enabled id=%s max=%u resume=%d location=%s\n",
-	                  id ? id : "(none)", s->resume_max, s->resumable,
+	                  idlog, s->resume_max, s->resumable,
 	                  s->resume_location ? s->resume_location : "(none)");
+	g_free(idlog);
 	if (x2_sm_state_need_request(s->st, 1))
 		sm_arm_idle_request(js, s);
 }
@@ -352,11 +356,14 @@ static void
 sm_handle_failed(JabberStream *js, SmSession *s, xmlnode *packet)
 {
 	const char *h = xmlnode_get_attrib(packet, "h");
+	guint32 count;
 	guint trimmed = 0;
 	guint dropped;
 
-	if (h != NULL
-	    && !x2_sm_state_ack(s->st, (guint32)strtoul(h, NULL, 10), &trimmed))
+	if (h != NULL && !x2_sm_parse_h(h, &count))
+		purple_debug_error(SM_DBG, "<failed h='%s'> is not a valid "
+		                   "count, ignored\n", h);
+	else if (h != NULL && !x2_sm_state_ack(s->st, count, &trimmed))
 		purple_debug_error(SM_DBG, "<failed h='%s'> is beyond %u sent\n",
 		                   h, x2_sm_state_outbound(s->st));
 	/* No session: stanzas still queued went over a plain stream. */
@@ -377,7 +384,14 @@ sm_handle_ack(JabberStream *js, SmSession *s, xmlnode *packet)
 		purple_debug_error(SM_DBG, "<a/> without 'h' ignored\n");
 		return;
 	}
-	h = (guint32)strtoul(attr, NULL, 10);
+	if (!x2_sm_parse_h(attr, &h)) {
+		purple_debug_error(SM_DBG, "<a h='%s'/> is not a valid count\n",
+		                   attr);
+		purple_connection_error_reason(js->gc,
+			PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+			_("Server sent an invalid stream management acknowledgement"));
+		return;
+	}
 	if (!x2_sm_state_ack(s->st, h, &trimmed)) {
 		char *err = g_strdup_printf("<stream:error><undefined-condition "
 			"xmlns='urn:ietf:params:xml:ns:xmpp-streams'/>"
@@ -398,6 +412,21 @@ sm_handle_ack(JabberStream *js, SmSession *s, xmlnode *packet)
 	                  trimmed, x2_sm_state_unacked(s->st));
 }
 
+/* <resumed/> or <failed/> we did not ask for: protocol error, disconnect. */
+static void
+sm_unexpected_reply(JabberStream *js, const char *name)
+{
+	const char *why = _("Unexpected stream management reply from the server");
+
+	purple_debug_error(SM_DBG, "<%s/> without a <resume/> sent on this "
+	                   "authenticated stream: protocol error\n", name);
+	if (js->sm_resume != NULL)
+		jabber_sm_resume_give_up(js, why);
+	else
+		purple_connection_error_reason(js->gc,
+			PURPLE_CONNECTION_ERROR_NETWORK_ERROR, why);
+}
+
 /* Processes incoming NS_STREAM_MANAGEMENT packets. */
 void
 jabber_sm_process_packet(JabberStream *js, xmlnode *packet)
@@ -409,9 +438,17 @@ jabber_sm_process_packet(JabberStream *js, xmlnode *packet)
 		purple_debug_error(SM_DBG, "<%s/> outside a session ignored\n", name);
 		return;
 	}
+	/* An answer to <resume/> is only valid after we sent one; a forged
+	 * <resumed/> before SASL must not skip authentication. */
+	if ((purple_strequal(name, "resumed")
+	     || (purple_strequal(name, "failed") && js->sm_resume != NULL))
+	    && !jabber_sm_resume_reply_ok(js)) {
+		sm_unexpected_reply(js, name);
+		return;
+	}
 	if (purple_strequal(name, "enabled"))
 		sm_handle_enabled(js, s, packet);
-	else if (purple_strequal(name, "resumed") && js->sm_resume != NULL)
+	else if (purple_strequal(name, "resumed"))
 		jabber_sm_resume_resumed(js, packet);
 	else if (purple_strequal(name, "failed") && js->sm_resume != NULL)
 		jabber_sm_resume_failed(js, packet);

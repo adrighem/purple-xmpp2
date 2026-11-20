@@ -21,7 +21,8 @@
  *   --trust-cert      pre-seed the tls_peers pool with a PEM for the account
  *                     domain and --host, so a self-signed cert is accepted.
  *   --proxy HOST:PORT use this HTTP (CONNECT) proxy for the account (c2s and
- *                     file upload); also installs the transfer UI ops.
+ *                     file upload); also installs the transfer UI ops.  `drop`
+ *                     then shuts down the sockets to the proxy.
  *   --debug           copy libpurple debug to stderr (always captured internally).
  *
  *
@@ -289,6 +290,9 @@ int main(int argc, char **argv)
 		purple_account_set_int(account, "port", port);
 	c2s_port = port ? port : 5222;
 	harness_xfer_init(proxy);
+	/* Through a proxy the socket's peer is the proxy: `drop` aims there. */
+	if (proxy != NULL && strrchr(proxy, ':') != NULL)
+		c2s_port = atoi(strrchr(proxy, ':') + 1);
 	for (i = 0; i < (int)prefs->len; i++)
 		set_pref(account, g_ptr_array_index(prefs, i));
 

@@ -14,6 +14,15 @@ server (the PUT of an upload slot), selected by --mode:
                 the client is still sending (a server that rejects at once)
   slow:BPS      read the body at BPS bytes per second (backpressure), then
                 answer 201
+  stall:BYTES   read BYTES of the body, then neither read nor answer (a
+                hung server) until the client goes away
+
+With --forge-resumed the first c2s connection is tunnelled and every later
+one is answered by a rogue server that sends a stream header and a
+<resumed/> before any SASL (tests/integration/test_sm_resume.sh: a resume
+must not skip authentication).  The session id is TLS-encrypted on the first
+connection, so the forged previd is a made-up one: the test tells the
+refusal reasons apart by their log line.
 
 Prints "PORT n" once listening, and "STUB put bytes=N of=M result=..." for
 each PUT at its end (result is the status sent, or "closed" when the client
@@ -71,6 +80,9 @@ async def serve_put(reader, writer, mode):
             await asyncio.sleep(0.2)
             return
         while got < length:
+            if kind == "stall" and got >= int(arg):
+                await asyncio.sleep(600)
+                return
             chunk = await reader.read(min(65536, length - got))
             if not chunk:
                 return
@@ -88,7 +100,21 @@ async def serve_put(reader, writer, mode):
         writer.close()
 
 
-async def handle(reader, writer, upload_port, mode):
+async def forge_resumed(reader, writer):
+    """A rogue server: header and <resumed/> at once, no SASL."""
+    await reader.readuntil(b">")
+    writer.write(b"<?xml version='1.0'?><stream:stream "
+                 b"xmlns='jabber:client' "
+                 b"xmlns:stream='http://etherx.jabber.org/streams' "
+                 b"from='localhost' id='forged' version='1.0'>"
+                 b"<resumed xmlns='urn:xmpp:sm:3' previd='forged' h='0'/>")
+    await writer.drain()
+    print("STUB forged <resumed/>", flush=True)
+    await asyncio.sleep(3)
+    writer.close()
+
+
+async def handle(reader, writer, upload_port, mode, forge, state):
     try:
         head = await read_head(reader)
         parts = head.split(" ")
@@ -101,19 +127,27 @@ async def handle(reader, writer, upload_port, mode):
         if int(port) == upload_port:
             await serve_put(reader, writer, mode)
             return
+        if forge and state["tunnelled"] > 0:
+            await forge_resumed(reader, writer)
+            return
+        state["tunnelled"] += 1
         up_reader, up_writer = await asyncio.open_connection(host, int(port))
-        await asyncio.gather(pipe(reader, up_writer), pipe(up_reader, writer))
+        await asyncio.gather(pipe(reader, up_writer),
+                             pipe(up_reader, writer))
     except (ConnectionError, asyncio.IncompleteReadError):
         writer.close()
 
 
 async def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--upload-port", type=int, required=True)
-    ap.add_argument("--mode", required=True)
+    ap.add_argument("--upload-port", type=int, default=0)
+    ap.add_argument("--mode", default="")
+    ap.add_argument("--forge-resumed", action="store_true")
     args = ap.parse_args()
+    state = {"tunnelled": 0}
     server = await asyncio.start_server(
-        lambda r, w: handle(r, w, args.upload_port, args.mode),
+        lambda r, w: handle(r, w, args.upload_port, args.mode,
+                            args.forge_resumed, state),
         "127.0.0.1", 0)
     print("PORT %d" % server.sockets[0].getsockname()[1], flush=True)
     async with server:

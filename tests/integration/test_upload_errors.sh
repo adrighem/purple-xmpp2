@@ -146,3 +146,19 @@ SCRIPT
 	fi
 done
 pass "sign-off and account removal mid-upload close the connection cleanly"
+
+# 8. A server that stops reading and never answers: the inactivity watchdog
+# fails the upload (60 s in production, 3 s through the test hook).
+if test_hooks_enabled; then
+	XMPP2_TEST_UPLOAD_STALL_SECS=3 via_stub stall stall:$((1 * MIB)) <<SCRIPT
+connect 30
+upload-fail bob@localhost $WORK/mid.bin 30
+expect-debug cat=xmpp2-upload text=the upload stalled: no data moved for 3 seconds
+no-debug timeout=1 cat=xmpp2-upload text=upload done
+disconnect
+SCRIPT
+	stub_stop
+	pass "a stalled upload server fails the transfer after the watchdog timeout"
+else
+	echo "SKIP: stall watchdog needs -DXMPP2_TEST_HOOKS=ON"
+fi
