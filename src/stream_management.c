@@ -356,11 +356,14 @@ static void
 sm_handle_failed(JabberStream *js, SmSession *s, xmlnode *packet)
 {
 	const char *h = xmlnode_get_attrib(packet, "h");
+	guint32 count;
 	guint trimmed = 0;
 	guint dropped;
 
-	if (h != NULL
-	    && !x2_sm_state_ack(s->st, (guint32)strtoul(h, NULL, 10), &trimmed))
+	if (h != NULL && !x2_sm_parse_h(h, &count))
+		purple_debug_error(SM_DBG, "<failed h='%s'> is not a valid "
+		                   "count, ignored\n", h);
+	else if (h != NULL && !x2_sm_state_ack(s->st, count, &trimmed))
 		purple_debug_error(SM_DBG, "<failed h='%s'> is beyond %u sent\n",
 		                   h, x2_sm_state_outbound(s->st));
 	/* No session: stanzas still queued went over a plain stream. */
@@ -381,7 +384,14 @@ sm_handle_ack(JabberStream *js, SmSession *s, xmlnode *packet)
 		purple_debug_error(SM_DBG, "<a/> without 'h' ignored\n");
 		return;
 	}
-	h = (guint32)strtoul(attr, NULL, 10);
+	if (!x2_sm_parse_h(attr, &h)) {
+		purple_debug_error(SM_DBG, "<a h='%s'/> is not a valid count\n",
+		                   attr);
+		purple_connection_error_reason(js->gc,
+			PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+			_("Server sent an invalid stream management acknowledgement"));
+		return;
+	}
 	if (!x2_sm_state_ack(s->st, h, &trimmed)) {
 		char *err = g_strdup_printf("<stream:error><undefined-condition "
 			"xmlns='urn:ietf:params:xml:ns:xmpp-streams'/>"

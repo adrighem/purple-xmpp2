@@ -71,6 +71,19 @@ x2_sm_resume_reply_ok(gboolean resume_sent, gboolean post_auth)
 	return resume_sent && post_auth;
 }
 
+gboolean
+x2_sm_parse_h(const char *s, guint32 *out)
+{
+	guint64 v;
+
+	if (s == NULL || !g_ascii_isdigit(s[0]))
+		return FALSE;
+	if (!g_ascii_string_to_unsigned(s, 10, 0, G_MAXUINT32, &v, NULL))
+		return FALSE;
+	*out = (guint32)v;
+	return TRUE;
+}
+
 char *
 x2_sm_id_log(const char *id)
 {

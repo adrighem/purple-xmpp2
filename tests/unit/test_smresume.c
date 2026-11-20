@@ -101,6 +101,30 @@ test_reply_ok(void)
 }
 
 static void
+test_parse_h(void)
+{
+	guint32 h = 77;
+	const char *bad[] = { NULL, "", " 5", "5 ", "+5", "-1", "0x10", "1e3",
+		"5.0", "abc", "4294967296", "99999999999999999999", NULL };
+	guint i;
+
+	g_assert_true(x2_sm_parse_h("0", &h));
+	g_assert_cmpuint(h, ==, 0);
+	g_assert_true(x2_sm_parse_h("25", &h));
+	g_assert_cmpuint(h, ==, 25);
+	g_assert_true(x2_sm_parse_h("007", &h));
+	g_assert_cmpuint(h, ==, 7);
+	g_assert_true(x2_sm_parse_h("4294967295", &h));
+	g_assert_cmpuint(h, ==, G_MAXUINT32);
+	h = 77;
+	g_assert_false(x2_sm_parse_h(NULL, &h));
+	for (i = 1; bad[i] != NULL; i++) {
+		g_assert_false(x2_sm_parse_h(bad[i], &h));
+		g_assert_cmpuint(h, ==, 77);	/* untouched on refusal */
+	}
+}
+
+static void
 test_id_log(void)
 {
 	char *s;
@@ -133,6 +157,7 @@ main(int argc, char **argv)
 	g_test_add_func("/smresume/failed-needs-attempt",
 	                test_failed_needs_attempt);
 	g_test_add_func("/smresume/reply-ok", test_reply_ok);
+	g_test_add_func("/smresume/parse-h", test_parse_h);
 	g_test_add_func("/smresume/id-log", test_id_log);
 	return g_test_run();
 }

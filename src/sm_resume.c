@@ -269,21 +269,21 @@ jabber_sm_resume_resumed(JabberStream *js, xmlnode *packet)
 	GList *resend = NULL, *l;
 	guint trimmed = 0, n = 0;
 	X2SmResend res;
+	guint32 h = 0;
 	char *idlog;
 
-	if (st == NULL || hs == NULL
+	if (st == NULL || !x2_sm_parse_h(hs, &h)
 	    || !purple_strequal(previd, jabber_sm_get_resume_id(js))) {
 		idlog = x2_sm_id_log(previd);
 		purple_debug_error(SM_DBG, "<resumed previd='%s' h='%s'/> does "
-		                   "not match our session\n", idlog,
-		                   hs ? hs : "");
+		                   "not match our session or 'h' is invalid\n",
+		                   idlog, hs ? hs : "");
 		g_free(idlog);
 		jabber_sm_resume_give_up(js,
 			_("Lost connection with server: invalid stream resumption"));
 		return;
 	}
-	res = x2_sm_state_resumed(st, (guint32)strtoul(hs, NULL, 10), &trimmed,
-	                          &resend);
+	res = x2_sm_state_resumed(st, h, &trimmed, &resend);
 	if (res != X2_SM_RESEND_OK) {
 		purple_debug_error(SM_DBG, "<resumed h='%s'/>: %s\n", hs,
 			res == X2_SM_RESEND_H_TOO_HIGH
@@ -322,6 +322,7 @@ jabber_sm_resume_failed(JabberStream *js, xmlnode *packet)
 	X2SmState *st = jabber_sm_get_state(js);
 	const char *hs = xmlnode_get_attrib(packet, "h");
 	const char *cond = "(none)";
+	guint32 h;
 	guint trimmed = 0;
 	xmlnode *c;
 
@@ -332,8 +333,10 @@ jabber_sm_resume_failed(JabberStream *js, xmlnode *packet)
 		}
 	}
 	/* XEP-0198 1.6: h on <failed/> says what the old session handled */
-	if (hs != NULL && st != NULL
-	    && !x2_sm_state_ack(st, (guint32)strtoul(hs, NULL, 10), &trimmed))
+	if (hs != NULL && !x2_sm_parse_h(hs, &h))
+		purple_debug_error(SM_DBG, "<failed h='%s'> is not a valid "
+		                   "count, ignored\n", hs);
+	else if (hs != NULL && st != NULL && !x2_sm_state_ack(st, h, &trimmed))
 		purple_debug_error(SM_DBG, "<failed h='%s'> is beyond %u sent\n",
 		                   hs, x2_sm_state_outbound(st));
 	purple_debug_warning(SM_DBG, "resume failed (%s) h=%s: %u acked, %u "
