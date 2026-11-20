@@ -559,10 +559,14 @@ already written line, so v1 has no visual ticks; an account option
 "Show delivery and read notices" (default off) writes a short
 `PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_NO_LOG` line. The optional Pidgin
 plugin `pidgin-xmpp2-ticks` renders ticks from the signals (7.9). For it,
-`receipts_outbound` also emits `xmpp2-sent-message` (account, bare peer, id,
+`receipts_outbound` also emits `xmpp2-sent-message` (account, peer, id,
 plain body) for every outgoing 1:1 message with a body and an id, whatever
 the caps say, before the request decision; it fires while libpurple sends,
-before the UI writes the sent line.
+before the UI writes the sent line. The peer is the conversation's name as
+`x2_msg_peer_of()` gives it: the bare JID, or `room/nick` for a private
+message to a room occupant, so a UI finds the right conversation. No
+`<request/>` goes to a room occupant, so no receipt or marker comes back for
+such a message and it never gets a tick.
 
 ### 7.5 Chat markers (XEP-0333)
 
@@ -901,7 +905,8 @@ instance). Unloading the plugin disconnects every signal and frees every
 `/plugins/gtk/xmpp2-ticks`: `enabled` (default on) and `style`
 (`checks`, `ascii`, `words`).
 
-Known limits: 1:1 only; no ticks on history, MAM or carbon lines, or after
+Known limits: 1:1 only (a MUC private message is recorded under its
+`room/nick` conversation but never ticks, see 7.4); no ticks on history, MAM or carbon lines, or after
 the view was rebuilt; a contact that answers without the request caps
 (7.4) gets none. Tests: `unit-tickmap` and `unit-tickbuf` (a plain
 `GtkTextBuffer` fed like Pidgin writes, no display), `smoke-ticks-load`, and

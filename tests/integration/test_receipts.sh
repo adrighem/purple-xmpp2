@@ -146,3 +146,20 @@ SCRIPT
 wait "$BOB_PID" || { cat "$WORK/bob4.log"; fail "receipt for a carbon copy"; }
 wait "$PHONE_PID" || true
 pass "no receipt for carbon-copied messages"
+
+# 5. A private message to a room occupant: xmpp2-sent-message names the
+# room/nick conversation (not the room), and no request goes out.
+peer_bg "$WORK/bob5.log" bob --stay 1 "${FEAT[@]}" --do "join $ROOM bob" \
+	--do "wait pm-1" --do "no-stanza <(request|markable)"
+BOB_PID=$PEER_PID
+run_harness alice "${HARNESS_OPTS[@]}" <<SCRIPT
+connect 30
+join $ROOM alice
+sleep 2
+send $ROOM/bob pm-1
+expect-debug cat=xmpp2-receipts text=signal xmpp2-sent-message account=alice@localhost/harness peer=$ROOM/bob id=
+sleep 2
+disconnect
+SCRIPT
+wait "$BOB_PID" || { cat "$WORK/bob5.log"; fail "MUC private message: a request was sent"; }
+pass "MUC private message signals room/nick as the peer and asks no receipt"
