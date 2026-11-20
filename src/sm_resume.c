@@ -229,7 +229,7 @@ jabber_sm_send_resume(JabberStream *js)
 	X2SmState *st = jabber_sm_get_state(js);
 	const char *id = jabber_sm_get_resume_id(js);
 	xmlnode *resume;
-	char *h;
+	char *h, *idlog;
 
 	if (st == NULL || id == NULL) {
 		jabber_sm_resume_give_up(js, _("Lost connection with server"));
@@ -240,8 +240,10 @@ jabber_sm_send_resume(JabberStream *js)
 	xmlnode_set_namespace(resume, NS_STREAM_MANAGEMENT);
 	xmlnode_set_attrib(resume, "previd", id);
 	xmlnode_set_attrib(resume, "h", h);
-	purple_debug_info(SM_DBG, "resume previd=%s h=%s, %u unacked\n", id, h,
-	                  x2_sm_state_unacked(st));
+	idlog = x2_sm_id_log(id);
+	purple_debug_info(SM_DBG, "resume previd=%s h=%s, %u unacked\n", idlog,
+	                  h, x2_sm_state_unacked(st));
+	g_free(idlog);
 	js->sm_resume->resume_sent = TRUE;
 	jabber_send(js, resume);
 	xmlnode_free(resume);
@@ -267,12 +269,15 @@ jabber_sm_resume_resumed(JabberStream *js, xmlnode *packet)
 	GList *resend = NULL, *l;
 	guint trimmed = 0, n = 0;
 	X2SmResend res;
+	char *idlog;
 
 	if (st == NULL || hs == NULL
 	    || !purple_strequal(previd, jabber_sm_get_resume_id(js))) {
+		idlog = x2_sm_id_log(previd);
 		purple_debug_error(SM_DBG, "<resumed previd='%s' h='%s'/> does "
-		                   "not match our session\n",
-		                   previd ? previd : "", hs ? hs : "");
+		                   "not match our session\n", idlog,
+		                   hs ? hs : "");
+		g_free(idlog);
 		jabber_sm_resume_give_up(js,
 			_("Lost connection with server: invalid stream resumption"));
 		return;
@@ -300,8 +305,10 @@ jabber_sm_resume_resumed(JabberStream *js, xmlnode *packet)
 		n++;
 	}
 	g_list_free(resend);
+	idlog = x2_sm_id_log(previd);
 	purple_debug_info(SM_DBG, "resumed previd=%s h=%s: %u acked, %u "
-	                  "resent\n", previd, hs, trimmed, n);
+	                  "resent\n", idlog, hs, trimmed, n);
+	g_free(idlog);
 	if (n > 0)
 		jabber_sm_request_ack(js);
 	/* A status change during the gap was not sent (no roster then);

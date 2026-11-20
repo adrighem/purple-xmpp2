@@ -4,6 +4,8 @@
 /* XEP-0198 resumption policy, see smresume.h. */
 #include "smresume.h"
 
+#include <string.h>
+
 guint
 x2_sm_resume_window(guint server_max)
 {
@@ -67,4 +69,15 @@ gboolean
 x2_sm_resume_reply_ok(gboolean resume_sent, gboolean post_auth)
 {
 	return resume_sent && post_auth;
+}
+
+char *
+x2_sm_id_log(const char *id)
+{
+	if (id == NULL)
+		return g_strdup("(none)");
+	/* an id of four characters or fewer would be shown whole */
+	if (strlen(id) <= 4)
+		return g_strdup("...");
+	return g_strdup_printf("%.4s...", id);
 }

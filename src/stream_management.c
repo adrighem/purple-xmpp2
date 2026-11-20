@@ -55,6 +55,7 @@
 #include "signals.h"
 #include "stream_management.h"
 #include "sm_resume.h"
+#include "smresume.h"
 #include "smstate.h"
 
 #define SM_DBG "xmpp2-sm"
@@ -332,6 +333,7 @@ sm_handle_enabled(JabberStream *js, SmSession *s, xmlnode *packet)
 	const char *id = xmlnode_get_attrib(packet, "id");
 	const char *max = xmlnode_get_attrib(packet, "max");
 	const char *resume = xmlnode_get_attrib(packet, "resume");
+	char *idlog;
 
 	g_free(s->resume_id);
 	g_free(s->resume_location);
@@ -341,9 +343,11 @@ sm_handle_enabled(JabberStream *js, SmSession *s, xmlnode *packet)
 	s->resumable = purple_strequal(resume, "true")
 	               || purple_strequal(resume, "1");
 	js->sm_state = SM_ENABLED;
+	idlog = x2_sm_id_log(id);
 	purple_debug_info(SM_DBG, "enabled id=%s max=%u resume=%d location=%s\n",
-	                  id ? id : "(none)", s->resume_max, s->resumable,
+	                  idlog, s->resume_max, s->resumable,
 	                  s->resume_location ? s->resume_location : "(none)");
+	g_free(idlog);
 	if (x2_sm_state_need_request(s->st, 1))
 		sm_arm_idle_request(js, s);
 }

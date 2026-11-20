@@ -74,4 +74,11 @@ void x2_sm_resume_reset(X2SmResume *r);
  */
 gboolean x2_sm_resume_reply_ok(gboolean resume_sent, gboolean post_auth);
 
+/**
+ * A resume id fit for the debug log: its first four characters and "...",
+ * "(none)" for NULL.  The id is a bearer token for the session, so it is
+ * never logged whole.  Free with g_free().
+ */
+char *x2_sm_id_log(const char *id);
+
 #endif /* XMPP2_CORE_SMRESUME_H_ */

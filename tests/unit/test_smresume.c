@@ -100,6 +100,28 @@ test_reply_ok(void)
 	g_assert_false(x2_sm_resume_reply_ok(FALSE, FALSE));
 }
 
+static void
+test_id_log(void)
+{
+	char *s;
+
+	s = x2_sm_id_log("0f3a9c1e-72b4-4d55-8e21-aa00bb11cc22");
+	g_assert_cmpstr(s, ==, "0f3a...");
+	g_free(s);
+	s = x2_sm_id_log("abcd");
+	g_assert_cmpstr(s, ==, "...");
+	g_free(s);
+	s = x2_sm_id_log("abcde");
+	g_assert_cmpstr(s, ==, "abcd...");
+	g_free(s);
+	s = x2_sm_id_log("");
+	g_assert_cmpstr(s, ==, "...");
+	g_free(s);
+	s = x2_sm_id_log(NULL);
+	g_assert_cmpstr(s, ==, "(none)");
+	g_free(s);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -111,5 +133,6 @@ main(int argc, char **argv)
 	g_test_add_func("/smresume/failed-needs-attempt",
 	                test_failed_needs_attempt);
 	g_test_add_func("/smresume/reply-ok", test_reply_ok);
+	g_test_add_func("/smresume/id-log", test_id_log);
 	return g_test_run();
 }

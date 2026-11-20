@@ -73,6 +73,12 @@ SCRIPT
 grep -q "connection error" "$H_ERR" && fail "resume raised a connection error"
 grep -q "^DBG xmpp2-sm: resume attempt 1 of 2" "$H_OUT" ||
 	fail "no first resume attempt"
+grep -q "^DBG xmpp2-sm: resumed previd=....\.\.\. " "$H_OUT" ||
+	fail "resumed line without the short id prefix"
+# The id is a session secret: only a short prefix may reach the log.
+if grep -E "xmpp2-sm: (enabled id|resumed? previd)=[^ .]{5,}" "$H_OUT" "$H_ERR"; then
+	fail "a full resume id was logged"
+fi
 wait "$BOB_PID" || { cat "$WORK/bob.log"; fail "bob peer failed"; }
 pass "TCP drop resumed silently: gap messages once each way, room kept, no bind, no MAM catch-up"
 
