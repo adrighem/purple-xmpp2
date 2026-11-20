@@ -24,9 +24,14 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 
 ## 2. Integration (`tests/integration/`)
 
-- `harness.c` builds to `xmpp2-harness`, a headless libpurple client driven
-  by a line script. The full command and filter reference is the header
-  comment of the file. Highlights: `--userdir` (persistent state, logs),
+- `harness*.c` builds to `xmpp2-harness`, a headless libpurple client driven
+  by a line script. `xmpp2-harness --help` lists every command from the
+  dispatch table (`commands[]` in `harness_script.c`, which also holds the
+  full command and filter reference). Modules: `harness_main.c` (args, core
+  init, loop), `harness_core.c` (run state, completion, polling),
+  `harness_ui.c` (conversation/notify/request/debug UI ops, `EV` lines),
+  `harness_filter.c` (flags and filters), `harness_cmds_{session,msg,rooms,
+  files,assert}.c` (handlers). Highlights: `--userdir` (persistent state, logs),
   `--log txt`, machine-readable `EV` lines for every conversation write,
   `expect-ev|expect-next|no-ev|count-ev` with filters (`kind conv who ctype
   flag noflag mtime timeout n text`; `kind=notify` matches
@@ -83,6 +88,21 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `test_mam_muc_bulk.sh` and `test_mam_muc_legacy.sh` (profile `nomam`)
   cover room history (PLAN M4); the state file's `[archive <room>]`
   section holds the room cursor.
+
+### Adding a harness command
+
+A command is one handler plus one table row:
+
+1. Write `void cmd_foo(const char *cmd, char *arg)` in the fitting
+   `harness_cmds_*.c` (or a new file listed in `tests/CMakeLists.txt`; `lib.sh`
+   builds every `harness*.c`). `cmd` is the name as typed, `arg` the rest of
+   the line (use `split_word()` to peel off words).
+2. Finish exactly once: `continue_ok(cmd, detail)` or `fail_now(cmd, detail)`
+   for immediate results, or `arm(P_..., cmd, secs)` / `poll_arm()` to wait
+   and let `resume()` report (the first FAIL ends the run).
+3. Declare it in `harness.h` and add `{ "foo", cmd_foo, "ARGS  what it does" }`
+   to `commands[]` in `harness_script.c`; `--help` picks the help text up.
+4. Add a step to `test_selftest.sh` and a line to the highlights above.
 
 Running several suites at once on one host: use a private server with
 `XMPP2_TEST_CONTAINER=name XMPP2_TEST_C2S_PORT=N XMPP2_TEST_HTTP_PORT=M`,

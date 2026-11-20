@@ -461,5 +461,3 @@ Acceptance:
   and `xmpp2-marker` signals.
 - Later XEPs: displayed sync (0490), retraction (0424), reactions (0444),
   replies (0461), bookmarks 2 (0402), client state indication (0352).
-- Split `tests/integration/harness.c` (one large file) into modules (accounts,
-  requests, script commands, filters).
