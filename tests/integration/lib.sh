@@ -26,10 +26,18 @@ ensure_venv() {
 }
 
 ensure_harness() {
-	local src="$ROOT/tests/integration/harness.c"
-	if [[ ! -x "$HARNESS" || "$src" -nt "$HARNESS" ]]; then
+	local dir="$ROOT/tests/integration" f stale=0
+	local srcs=("$dir"/harness*.c)
+	if [[ ! -x "$HARNESS" ]]; then
+		stale=1
+	else
+		for f in "${srcs[@]}" "$dir"/harness.h; do
+			[[ "$f" -nt "$HARNESS" ]] && stale=1
+		done
+	fi
+	if [[ $stale == 1 ]]; then
 		# shellcheck disable=SC2046
-		gcc -Wall -Wextra -Wno-unused-parameter -o "$HARNESS" "$src" \
+		gcc -Wall -Wextra -Wno-unused-parameter -o "$HARNESS" "${srcs[@]}" \
 			$(pkg-config --cflags --libs purple glib-2.0)
 	fi
 }

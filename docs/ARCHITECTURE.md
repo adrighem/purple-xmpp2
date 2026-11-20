@@ -172,7 +172,7 @@ src/
     upload_proto.c      slot request/response, HTTP PUT request, status line
 tests/
   unit/                 NEW  GTest per core/ file, run by ctest
-  integration/          EXISTING harness.c, peer.py, test_*.sh
+  integration/          harness*.c, peer.py, test_*.sh
   server/               EXISTING Prosody 13 in podman
 docs/                   this file, PLAN.md, GAJIM-COMPARISON.md
 ```

@@ -13,7 +13,17 @@ else()
     set(X2_TEST_HOOKS_ENV 0)
 endif()
 
-add_executable(xmpp2-harness integration/harness.c)
+add_executable(xmpp2-harness
+    integration/harness_main.c
+    integration/harness_core.c
+    integration/harness_filter.c
+    integration/harness_ui.c
+    integration/harness_script.c
+    integration/harness_cmds_session.c
+    integration/harness_cmds_msg.c
+    integration/harness_cmds_rooms.c
+    integration/harness_cmds_files.c
+    integration/harness_cmds_assert.c)
 target_link_libraries(xmpp2-harness PRIVATE PkgConfig::PURPLE PkgConfig::GLIB_T)
 target_compile_options(xmpp2-harness PRIVATE -Wall -Wextra -Wno-unused-parameter)
 

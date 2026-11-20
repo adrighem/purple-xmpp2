@@ -16,7 +16,7 @@ Files: src/ext/* src/core/* tests/*
 Copyright: 2026 purple-xmpp2 contributors
 License: GPL-2+
 
-Files: tests/integration/harness.c
+Files: tests/integration/harness*
 Copyright: 1998-2024 the Pidgin, Finch, and libpurple contributors
  2026 Vincent van Adrighem
 License: GPL-2+
