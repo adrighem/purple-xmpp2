@@ -80,3 +80,13 @@ if(XMPP2_IDN)
     target_compile_definitions(test-correct PRIVATE USE_IDN)
     target_link_libraries(test-correct PRIVATE PkgConfig::LIBIDN)
 endif()
+
+# pidgin-xmpp2-ticks logic, built only with the Pidgin plugin. tickbuf runs
+# on a plain GtkTextBuffer and needs no display.
+if(TARGET x2ticks)
+    x2_unit_test(tickmap)
+    target_link_libraries(test-tickmap PRIVATE x2ticks)
+    target_compile_options(test-tickmap PRIVATE -Wno-unused-parameter)
+    x2_unit_test(tickbuf)
+    target_link_libraries(test-tickbuf PRIVATE x2ticks)
+endif()

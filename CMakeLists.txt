@@ -172,6 +172,36 @@ endif()
 
 install(TARGETS xmpp2 LIBRARY DESTINATION "${XMPP2_PLUGIN_DIR}")
 
+# Optional Pidgin plugin (pidgin-plugin/): delivery and read ticks.  AUTO
+# builds it when pidgin.pc is found, ON requires it, OFF skips it.
+set(XMPP2_PIDGIN_PLUGIN AUTO CACHE STRING
+    "Build the pidgin-xmpp2-ticks Pidgin plugin (AUTO, ON, OFF)")
+set_property(CACHE XMPP2_PIDGIN_PLUGIN PROPERTY STRINGS AUTO ON OFF)
+set(XMPP2_BUILD_TICKS OFF)
+if(XMPP2_PIDGIN_PLUGIN STREQUAL "ON")
+    pkg_check_modules(PIDGIN REQUIRED IMPORTED_TARGET pidgin>=2.14)
+    pkg_check_modules(GTK2 REQUIRED IMPORTED_TARGET gtk+-2.0)
+    set(XMPP2_BUILD_TICKS ON)
+elseif(XMPP2_PIDGIN_PLUGIN STREQUAL "AUTO")
+    pkg_check_modules(PIDGIN IMPORTED_TARGET pidgin>=2.14)
+    pkg_check_modules(GTK2 IMPORTED_TARGET gtk+-2.0)
+    if(PIDGIN_FOUND AND GTK2_FOUND)
+        set(XMPP2_BUILD_TICKS ON)
+    endif()
+elseif(NOT XMPP2_PIDGIN_PLUGIN STREQUAL "OFF")
+    message(FATAL_ERROR "XMPP2_PIDGIN_PLUGIN must be AUTO, ON or OFF")
+endif()
+if(XMPP2_BUILD_TICKS)
+    pkg_get_variable(PIDGIN_PLUGINDIR pidgin plugindir)
+    if(NOT PIDGIN_PLUGINDIR)
+        set(PIDGIN_PLUGINDIR "lib/pidgin")
+    endif()
+    set(XMPP2_PIDGIN_PLUGIN_DIR "${PIDGIN_PLUGINDIR}"
+        CACHE PATH "Pidgin 2 UI plugin installation directory")
+    add_subdirectory(pidgin-plugin)
+endif()
+message(STATUS "pidgin-xmpp2-ticks plugin: ${XMPP2_BUILD_TICKS}")
+
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()

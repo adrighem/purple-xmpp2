@@ -13,12 +13,12 @@ Jingle, BOSH, Cyrus SASL, and DIGEST-MD5 were removed from
 the fork and are not built.
 
 ```sh
-# Debian / Ubuntu
+# Debian / Ubuntu (pidgin-dev only for the optional ticks plugin)
 sudo apt install build-essential cmake ninja-build pkgconf libpurple-dev \
-  libglib2.0-dev libxml2-dev libidn-dev
+  libglib2.0-dev libxml2-dev libidn-dev pidgin-dev
 # Fedora
 sudo dnf install cmake ninja-build gcc pkgconf-pkg-config libpurple-devel \
-  glib2-devel libxml2-devel libidn-devel
+  glib2-devel libxml2-devel libidn-devel pidgin-devel
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
@@ -29,6 +29,15 @@ To install per user instead, configure with
 To try the plugin without touching the system, copy `build/libxmpp2.so` to
 `~/.purple/plugins/` and start `pidgin`. The plugin id is `prpl-xmpp2`; it
 coexists with the built-in XMPP plugin.
+
+The optional Pidgin plugin `pidgin-xmpp2-ticks` (sources in `pidgin-plugin/`,
+design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 7.9) is built when
+`pkg-config` finds `pidgin.pc` (`-DXMPP2_PIDGIN_PLUGIN=AUTO`, the default;
+`ON` makes Pidgin and GTK 2 required, `OFF` skips it). It installs into
+`pkg-config --variable=plugindir pidgin`; to try it, copy
+`build/pidgin-plugin/pidgin-xmpp2-ticks.so` to `~/.purple/plugins/` and
+enable **XMPP2 Delivery Ticks** under Tools, Plugins. Only this plugin links
+GTK; keep `src/` free of GTK and Pidgin headers.
 
 ## Test
 
@@ -52,6 +61,9 @@ CMake options for development:
 - `XMPP2_SANITIZE=ON` builds with AddressSanitizer and UBSan. Use it for
   `ctest -L unit`; the sanitized plugin only loads into a sanitized host.
 - `XMPP2_WERROR=ON` turns warnings into errors.
+- `XMPP2_PIDGIN_PLUGIN=AUTO|ON|OFF` controls the ticks plugin (see Build).
+  Its unit tests (`unit-tickmap`, `unit-tickbuf`) need no display; the smoke
+  test `smoke-ticks-load` and `integration-ticks` run a real Pidgin under Xvfb.
 
 Several suites on one host restart each other's test server. Give each its own:
 `XMPP2_TEST_CONTAINER=name XMPP2_TEST_C2S_PORT=N XMPP2_TEST_HTTP_PORT=M`, plus
@@ -93,8 +105,13 @@ CI builds on Debian 13, Ubuntu 24.04, and Fedora (latest), and builds `.deb` and
 Release Please tag a release; the workflow then attaches the packages and a
 source tarball, publishes the release, and updates the signed APT repository on
 GitHub Pages. The packaging assumes `cmake --install` puts `libxmpp2.so` in
-libpurple's plugin directory (`pkg-config --variable=plugindir purple`). Debian
-packaging lives in `debian/`, the RPM spec in `packaging/rpm/`.
+libpurple's plugin directory (`pkg-config --variable=plugindir purple`) and
+`pidgin-xmpp2-ticks.so` in Pidgin's (`pkg-config --variable=plugindir
+pidgin`). Each build produces two binary packages: `purple-xmpp2` (no GTK
+dependency) and `pidgin-xmpp2-ticks` (depends on `pidgin` and the exact
+`purple-xmpp2` version). Debian packaging lives in `debian/`, the RPM spec
+(main package plus the `pidgin-xmpp2-ticks` subpackage) in
+`packaging/rpm/`.
 
 By contributing, you agree that your contributions are provided under
 GPL-2.0-or-later.

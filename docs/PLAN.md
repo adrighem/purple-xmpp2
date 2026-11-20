@@ -419,6 +419,28 @@ Acceptance:
 - README: install, coexistence with prpl-jabber, migration, known limits
   (no visual ticks, no OMEMO, no A/V, no BOSH).
 
+## M13: Pidgin ticks plugin `pidgin-xmpp2-ticks` (v0.2.0) (done)
+
+Optional GTK 2 plugin in `pidgin-plugin/`, design in ARCHITECTURE 7.9. The
+prpl gains one signal, `xmpp2-sent-message` (account, bare peer, id, body),
+emitted while an outgoing 1:1 message with a body is sent.
+
+Acceptance:
+- A line sent from a Pidgin conversation of an xmpp2 account shows one tick
+  after the contact's receipt and two after its `displayed` marker; a late
+  receipt never takes two ticks back to one (`integration-ticks`: real
+  Pidgin under Xvfb against Prosody, slixmpp peer answering both).
+- Scrollback trimming, "Clear Scrollback" and closing the conversation drop
+  the tracked lines; a late receipt then draws nothing. At most 200 lines
+  per view, least recently used dropped (`unit-tickmap`, `unit-tickbuf`).
+- Pidgin loads the plugin with and without prpl-xmpp2 installed, without
+  GLib criticals or signal errors (`smoke-ticks-load`); the plugin connects
+  to the prpl signals lazily and forgets them when the prpl unloads.
+- Only `purple_init_plugin` exported (`unit-exports-ticks`).
+- Packages: `pidgin-xmpp2-ticks` .deb and RPM subpackage, depending on
+  `pidgin` and the same `purple-xmpp2` version; `purple-xmpp2` itself has no
+  GTK dependency.
+
 ## Tech lead decisions (2026-11-19)
 
 - MAM (XEP-0313) is the offline-messaging mechanism. Stream management v1
@@ -458,6 +480,6 @@ Acceptance:
 - Streaming HTTP upload from disk with progress (v0.1.0 reads the file into
   memory).
 - A GTK plugin that draws receipt and marker ticks from the `xmpp2-receipt`
-  and `xmpp2-marker` signals.
+  and `xmpp2-marker` signals (done, M13).
 - Later XEPs: displayed sync (0490), retraction (0424), reactions (0444),
   replies (0461), bookmarks 2 (0402), client state indication (0352).

@@ -76,3 +76,28 @@ endforeach()
 # Receipts and markers tests run several harness sessions with settle delays.
 set_tests_properties(integration-receipts integration-markers
     PROPERTIES TIMEOUT 400)
+
+# pidgin-xmpp2-ticks (built only when pidgin.pc was found)
+if(TARGET pidgin-xmpp2-ticks)
+    add_test(NAME unit-exports-ticks
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/unit_exports.sh
+            $<TARGET_FILE:pidgin-xmpp2-ticks>)
+    set_tests_properties(unit-exports-ticks PROPERTIES LABELS unit)
+
+    add_test(NAME smoke-ticks-load
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/smoke/ticks-load.sh
+            $<TARGET_FILE:pidgin-xmpp2-ticks> $<TARGET_FILE:xmpp2>)
+    set_tests_properties(smoke-ticks-load PROPERTIES
+        LABELS smoke SKIP_RETURN_CODE 77 TIMEOUT 120)
+    if(NOT XMPP2_PIDGIN OR NOT XMPP2_XVFB)
+        set_tests_properties(smoke-ticks-load PROPERTIES DISABLED TRUE)
+    endif()
+
+    # A real Pidgin against the podman Prosody (test hook in the plugin).
+    add_test(NAME integration-ticks
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh
+            ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_ticks.sh)
+    set_tests_properties(integration-ticks PROPERTIES
+        LABELS integration SKIP_RETURN_CODE 77 RUN_SERIAL TRUE TIMEOUT 240
+        ENVIRONMENT "PRPL=prpl-xmpp2;PLUGIN_DIR=$<TARGET_FILE_DIR:xmpp2>;TICKS_SO=$<TARGET_FILE:pidgin-xmpp2-ticks>;XMPP2_HARNESS=$<TARGET_FILE:xmpp2-harness>;XMPP2_TEST_HOOKS=${X2_TEST_HOOKS_ENV}")
+endif()

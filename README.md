@@ -30,6 +30,7 @@ the server archive and shows it in the right conversation, in order, once.
 | Chat markers | XEP-0333 | 1:1 chats: `displayed` is sent when you focus the conversation; signal `xmpp2-marker` |
 | Message correction | XEP-0308 | Corrections show as a new "corrected:" line; `/correct TEXT` fixes your last message |
 | Account migration from the built-in plugin | | Copies accounts, buddy list and room bookmarks |
+| Delivery and read ticks in Pidgin | XEP-0184, XEP-0333 | Optional Pidgin plugin `pidgin-xmpp2-ticks` (new in v0.2.0): ✓ after your sent line when delivered, ✓✓ when displayed; see [Ticks in Pidgin](#ticks-in-pidgin) |
 
 ### How offline messages work
 
@@ -67,8 +68,11 @@ transfer proxies, custom smileys), the Advanced tab has:
 
 - No stream resumption. After a network drop Pidgin reconnects normally and MAM
   fills the gap (planned for v0.2).
-- Receipts and markers have no tick icons in the GTK UI. They are shown only as
-  the optional notice line and as signals for plugins.
+- Ticks for receipts and markers need the separate `pidgin-xmpp2-ticks` Pidgin
+  plugin; other libpurple clients get the optional notice line and the
+  signals. Ticks only appear on lines sent from this Pidgin while the
+  conversation is open, not on history, carbons from other devices, or group
+  chats.
 - A corrected message appears as a new line, not an in-place edit.
 - File upload needs a server with XEP-0363 over `https` (or the opt-in above).
   The whole file is read into memory, there is no progress bar, and the server's
@@ -95,6 +99,8 @@ primary install path) and install it:
 
 ```sh
 sudo apt install ./purple-xmpp2_<version>_<debian-13|ubuntu-24.04>_amd64.deb
+# optional, Pidgin only: delivery and read ticks
+sudo apt install ./pidgin-xmpp2-ticks_<version>_<debian-13|ubuntu-24.04>_amd64.deb
 ```
 
 A signed APT repository on GitHub Pages is coming soon.
@@ -103,6 +109,8 @@ A signed APT repository on GitHub Pages is coming soon.
 
 ```sh
 sudo dnf install ./purple-xmpp2-<version>-1.<dist>.x86_64.rpm
+# optional, Pidgin only: delivery and read ticks
+sudo dnf install ./pidgin-xmpp2-ticks-<version>-1.<dist>.x86_64.rpm
 ```
 
 ### From source
@@ -116,7 +124,11 @@ sudo cmake --install build
 ```
 
 This installs `libxmpp2.so` into libpurple's plugin directory
-(`pkg-config --variable=plugindir purple`). For a per-user install without
+(`pkg-config --variable=plugindir purple`). When the Pidgin development files
+are installed (`pidgin-dev`, Fedora `pidgin-devel`), it also builds and
+installs `pidgin-xmpp2-ticks.so` into Pidgin's plugin directory
+(`pkg-config --variable=plugindir pidgin`); `-DXMPP2_PIDGIN_PLUGIN=OFF` skips
+it, `ON` makes it required. The protocol plugin itself never needs GTK. For a per-user install without
 root, use `cmake -B build -DXMPP2_PLUGIN_DIR=$HOME/.purple/plugins` and
 `cmake --install build`. Fully quit and restart Pidgin, then
 look for **XMPP (xmpp2)** under Accounts, Manage Accounts, Add.
@@ -141,6 +153,19 @@ only if they are saved. You can also add an **XMPP (xmpp2)** account by hand wit
 the same username, domain, and password. Do not run both accounts at once: two
 sessions with the same resource conflict, so give the new account a different
 resource.
+
+### Ticks in Pidgin
+
+With the `pidgin-xmpp2-ticks` package installed, enable **XMPP2 Delivery
+Ticks** under **Tools, Plugins**. In 1:1 conversations of XMPP (xmpp2)
+accounts, a line you send gets a grey ✓ at its end when the contact's
+client confirms delivery (XEP-0184 receipt or a `received` marker) and a blue
+✓✓ when it reports the message as displayed (XEP-0333). The plugin's
+**Configure Plugin** dialog switches ticks off or picks a style: check marks,
+ASCII (`+`, `++`), or words (`(delivered)`, `(read)`). Contacts whose client
+does not support receipts or markers never send them, so their lines stay
+without ticks. Ticks are not logged and disappear when the conversation is
+closed or its scrollback cleared.
 
 ### Coexistence with built-in XMPP
 

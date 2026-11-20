@@ -88,6 +88,12 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
   `test_mam_muc_bulk.sh` and `test_mam_muc_legacy.sh` (profile `nomam`)
   cover room history (PLAN M4); the state file's `[archive <room>]`
   section holds the room cursor.
+- `test_ticks.sh` (PLAN M13) runs a real Pidgin under xvfb-run with
+  `pidgin-xmpp2-ticks.so` (`TICKS_SO`) and an alice account in a scratch
+  profile; the plugin's test hook (`XMPP2_TICKS_TEST_PEER`, needs
+  `XMPP2_TEST_HOOKS`) sends one line to bob, who answers with a receipt and a
+  displayed marker, and logs the view's line after each update: one tick,
+  then two, then clear and close without criticals.
 
 ### Adding a harness command
 
@@ -127,6 +133,13 @@ an `x2_`/`jabber_` function).
 Exit 77 means skipped (plugin not built).
 
     tests/smoke/pidgin-load.sh [build/libxmpp2.so]
+
+`tests/smoke/ticks-load.sh` does the same for the ticks plugin (saved as
+loaded in `prefs.xml`), once with `libxmpp2.so` (it must connect to the prpl
+signals) and once without (it must wait quietly); built only when the ticks
+plugin is.
+
+    tests/smoke/ticks-load.sh build/pidgin-plugin/pidgin-xmpp2-ticks.so build/libxmpp2.so
 
 ## CMake / ctest
 
