@@ -170,6 +170,11 @@ src/
     replace_parse.c     correction element parse/build, sender identity, marker
     corrlog.c           bounded (conversation, id) -> author log, last sent id
     upload_proto.c      slot request/response, HTTP PUT request, status line
+pidgin-plugin/          NEW  optional Pidgin (GTK 2) plugin pidgin-xmpp2-ticks (7.9)
+  tickmap.c             pure logic: tick states, glyphs, bounded LRU id map
+  tickbuf.c             GtkTextBuffer only: marks, glyph insert, delete-range
+  ticks.c               Pidgin glue: signals, correlation, prefs
+  ticks_test.c          test hooks for integration-ticks (XMPP2_TEST_HOOKS only)
 tests/
   unit/                 NEW  GTest per core/ file, run by ctest
   integration/          harness*.c, peer.py, test_*.sh
@@ -188,6 +193,8 @@ Layering rules (enforced in review, cheap to grep):
   is renamed to `xmpp2` mechanically in M1; new modules use `xmpp2-<module>`.
   Tests assert only on `xmpp2*` categories.
 - Each feature module stays well under 500 lines; split before it grows.
+- Nothing under `src/` includes GTK or Pidgin headers; only
+  `pidgin-plugin/` does, so the protocol package never depends on GTK.
 
 ## 5. Hook layer (`ext/ext.h`)
 
@@ -550,8 +557,12 @@ asked for and only when `x2_msg_is_live_incoming()`. Pure receipts are
 consumed whatever their source. Pidgin 2 cannot decorate an
 already written line, so v1 has no visual ticks; an account option
 "Show delivery and read notices" (default off) writes a short
-`PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_NO_LOG` line. A GTK companion plugin
-can render ticks from the signals later.
+`PURPLE_MESSAGE_SYSTEM | PURPLE_MESSAGE_NO_LOG` line. The optional Pidgin
+plugin `pidgin-xmpp2-ticks` renders ticks from the signals (7.9). For it,
+`receipts_outbound` also emits `xmpp2-sent-message` (account, bare peer, id,
+plain body) for every outgoing 1:1 message with a body and an id, whatever
+the caps say, before the request decision; it fires while libpurple sends,
+before the UI writes the sent line.
 
 ### 7.5 Chat markers (XEP-0333)
 
@@ -743,6 +754,76 @@ covers the gap. Requires splitting transport state from session state in
 `JabberStream`; done last because it touches the most of `jabber.c`.
 
 MAM, not SM, is the primary offline-messaging mechanism.
+
+### 7.9 Delivery and read ticks in Pidgin (`pidgin-xmpp2-ticks`)
+
+Optional Pidgin 2 plugin (id `gtk-xmpp2-ticks`, file
+`pidgin-xmpp2-ticks.so`, sources in `pidgin-plugin/`), built when CMake finds
+`pidgin.pc` (`XMPP2_PIDGIN_PLUGIN=AUTO|ON|OFF`), installed into
+`pkg-config --variable=plugindir pidgin`, packaged separately. It exports
+only `purple_init_plugin` (same version script as the prpl) and is not linked
+with `--no-undefined`: `pidgin_*` symbols come from the executable.
+
+Pidgin 2 cannot rewrite a written line, but its conversation view
+(`GtkIMHtml`) is a `GtkTextView` that only appends, so the plugin keeps a
+`GtkTextMark` at the end of each sent line and later inserts a glyph there
+with `gtk_text_buffer_insert_with_tags()`.
+
+Correlation of a message id with its line. libpurple's `common_send()`
+calls `serv_send_im()` and then `purple_conv_im_write()` in one call stack,
+and emits `sent-im-msg` at the end:
+
+1. `xmpp2-sent-message` (prpl, from `receipts_outbound`) stores
+   (account, peer, id) as *pending* and adds a `G_PRIORITY_HIGH` idle that
+   drops it.
+2. `displayed-im-msg` (Pidgin, after `pidgin_conv_write_conv()` appended the
+   line) with `PURPLE_MESSAGE_SEND`, the same account and the same
+   normalized peer as the conversation: create an anonymous left-gravity mark
+   at the buffer end, map id -> mark, clear pending.
+3. `sent-im-msg` clears pending too (send failed, or another plugin
+   suppressed the display). Because pending never survives to the next main
+   loop iteration, a sent line written later without a send (a carbon of our
+   other device, a `serv_got_im()` echo) is never tagged with a stale id.
+
+Updates. `xmpp2-receipt` gives delivered, `xmpp2-marker` gives delivered for
+`received` and displayed for `displayed` or `acknowledged`; a state never
+goes back. The conversation is found with
+`purple_find_conversation_with_account()` (the prpl's normalize makes bare
+and full JID names meet); the glyph (" ✓", " ✓✓", or the ASCII or
+word style) replaces the previous one only if that text is still intact at
+the mark, in a grey or blue tag at `PANGO_SCALE_SMALL`. Glyphs are display
+only: never logged, never sent.
+
+State and lifetime. One `X2TickBuf` per view, stored as object data on the
+`GtkIMHtml` and freed from its `destroy` handler (window or tab closed,
+conversation destroyed); contact-merged IMs share it. It holds at most 200
+ids, least recently used dropped, deleting their marks. Lines that leave the
+buffer leave the map: a `delete-range` that covers a mark
+(start < mark <= end: scrollback trimming in `pidgin_conv_write_conv()`,
+`gtk_imhtml_clear()` for "Clear Scrollback") forgets the id, and
+`cleared-message-history` clears the map. A range that starts exactly at a
+mark keeps it: that is Pidgin's typing notice, appended after the last line
+between `typing-notification-start` and `-end`; when a glyph goes where
+that notice starts, the start mark is moved past the glyph so removing the
+notice does not take the glyph along.
+
+Robustness. The prpl may be missing or load after the plugin: its signals
+are connected when `purple_plugins_find_with_id("prpl-xmpp2")` finds it
+loaded, or on `plugin-load`, starting with `xmpp2-sent-message` (a prpl
+without it gets no handlers, with an error in the debug log), and are
+forgotten on `plugin-unload` (libpurple drops the handlers with the
+instance). Unloading the plugin disconnects every signal and frees every
+`X2TickBuf`; glyphs already drawn stay. Preferences under
+`/plugins/gtk/xmpp2-ticks`: `enabled` (default on) and `style`
+(`checks`, `ascii`, `words`).
+
+Known limits: 1:1 only; no ticks on history, MAM or carbon lines, or after
+the view was rebuilt; a contact that answers without the request caps
+(7.4) gets none. Tests: `unit-tickmap` and `unit-tickbuf` (a plain
+`GtkTextBuffer` fed like Pidgin writes, no display), `smoke-ticks-load`, and
+`integration-ticks`, where a real Pidgin under Xvfb signs in to Prosody and
+a test hook (`XMPP2_TEST_HOOKS`, `XMPP2_TICKS_TEST_PEER`) sends a line and
+logs the view's text after each update.
 
 ## 8. Security rules (checklist for review and QA)
 

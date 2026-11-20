@@ -101,8 +101,8 @@ jobs:
       - name: Upload assets and publish the release
         run: |
           set -euo pipefail
-          test "$(find dist -name '*.deb' | wc -l)" -ge 2
-          test "$(find dist -name '*.rpm' | wc -l)" -ge 1
+          test "$(find dist -name '*.deb' | wc -l)" -ge 4
+          test "$(find dist -name '*.rpm' | wc -l)" -ge 2
           gh release upload "$RELEASE_TAG" dist/* --clobber \
             --repo "$GITHUB_REPOSITORY"
           gh release edit "$RELEASE_TAG" --draft=false --latest \

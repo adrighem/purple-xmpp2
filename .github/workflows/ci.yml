@@ -43,7 +43,7 @@ jobs:
           apt-get update
           apt-get install --yes --no-install-recommends \
             build-essential ca-certificates cmake git libglib2.0-dev \
-            libidn-dev libpurple-dev libxml2-dev ninja-build \
+            libidn-dev libpurple-dev libxml2-dev ninja-build pidgin-dev \
             pkgconf
 
       - name: Install dependencies (Fedora)
@@ -51,7 +51,8 @@ jobs:
         run: |
           dnf install --assumeyes --setopt=install_weak_deps=False \
             cmake gcc git glib2-devel libidn-devel \
-            libpurple-devel libxml2-devel ninja-build pkgconf-pkg-config
+            libpurple-devel libxml2-devel ninja-build pidgin-devel \
+            pkgconf-pkg-config
 
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,7 +62,7 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON
+            -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON -DXMPP2_PIDGIN_PLUGIN=ON
 
       - name: Build
         run: cmake --build build
@@ -73,6 +74,7 @@ jobs:
         run: |
           DESTDIR="$PWD/stage" cmake --install build
           find stage -name 'libxmpp2.so' | grep -q .
+          find stage -name 'pidgin-xmpp2-ticks.so' | grep -q .
 
   integration:
     name: smoke and integration (ubuntu-24.04)
@@ -84,7 +86,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             build-essential cmake git libglib2.0-dev libidn-dev libpurple-dev \
-            libxml2-dev ninja-build pkgconf pidgin podman python3 python3-venv xvfb xauth
+            libxml2-dev ninja-build pkgconf pidgin pidgin-dev podman python3 \
+            python3-venv xvfb xauth
 
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,7 +97,7 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON
+            -DBUILD_TESTING=ON -DXMPP2_TEST_HOOKS=ON -DXMPP2_PIDGIN_PLUGIN=ON
           cmake --build build
 
       - name: Smoke and integration tests
