@@ -13,7 +13,7 @@ or `have` (inherited, kept).
 | Message carbons | 0280 | no (third-party plugin) | yes | done (v0.1.0) |
 | Stream management, acks | 0198 | partial (acks, no resume, bugs) | yes | done (v0.1.0: batched acks, no blind resend, unacked reported) |
 | Stream management, resumption | 0198 | no | yes | v0.2 (M10, silent reconnect) |
-| HTTP file upload | 0363 | no | yes | done (v0.1.0; https by default, whole file in memory) |
+| HTTP file upload | 0363 | no | yes | done (https by default; v0.2.0 streams from disk with progress) |
 | Delivery receipts | 0184 | no | yes | done (v0.1.0: protocol, signal, optional notice; no ticks UI) |
 | Chat markers | 0333 | no | yes | done (v0.1.0: 1:1, displayed on focus) |
 | Last message correction | 0308 | no | yes | done (v0.1.0: receive as "corrected:" line, `/correct`) |

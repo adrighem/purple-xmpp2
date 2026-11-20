@@ -326,9 +326,42 @@ Status: done. Unit `test-upload` (core), integration `test_upload.sh`
 (contact, room, size limit, http opt-in, discovery) and
 `test_upload_fallback.sh` (profile `noupload`). The test server serves plain
 http, so those tests set the account option `allow_plain_http_upload`.
-https is only covered by URL parsing unit tests (libpurple's SSL plugin does
-the TLS). Not done: streaming from disk and progress (v1 reads the file into
-memory), XEP-0363 v0.2 (`urn:xmpp:http:upload`) services.
+Not done: XEP-0363 v0.2 (`urn:xmpp:http:upload`) services. v0.2.0 replaced
+the whole-file-in-memory PUT with a streaming client (see "v0.2: streaming
+upload" below).
+
+## v0.2: streaming upload with progress (done)
+
+`ext/upload_put.c` (HTTP/1.1 PUT client over `purple_proxy_connect` and
+`purple_ssl_connect`) and `core/upload_http.c` (accounting, progress steps,
+response parser) replace the v0.1.0 PUT through libpurple's fetch API.
+Acceptance and evidence:
+- 50 MiB sparse file to a contact: byte for byte (sha256), peak RSS of the
+  harness grows by less than 16 MiB (`rss-reset` / `rss-check`, VmHWM), also
+  against a stub that reads at 16 MiB/s (backpressure). No 100 MiB cap; the
+  server's `max-file-size` is the limit.
+- Progress: `EV xfer-progress` lines (harness transfer UI ops) start at 0,
+  never go back and end at the size, 100 steps for 50 MiB.
+- Cancel mid-upload (as the transfer window's Cancel), sign-off mid-upload
+  and account removal mid-upload close the connection; the stub sees the
+  client go after a fraction of the file.
+- 500, a redirect (not followed, one request) and a 413 sent while the body is
+  still written (read at once, upload stops after about 256 kB) fail with a
+  clear message. `noupload` fallback unchanged.
+- https: `test_upload_https.sh` runs Prosody with `https_ports` and the test
+  certificate (`XMPP2_UPLOAD_HTTPS=1`), uploads 20 MiB without the plain http
+  option and downloads it again. Limit: an untrusted certificate makes
+  libpurple ask the user (a UI request) and the headless harness cannot answer
+  while an upload waits, so the refusal is not covered by a test; it is
+  libpurple's own verification, not ours.
+- Unit `test-upload_http` (accounting with partial writes, progress steps,
+  response parsing incl. 1xx and garbage, status classes, TLS decision from
+  the URL).
+Test server additions: `XMPP2_UPLOAD_LIMIT` (bytes) and `XMPP2_UPLOAD_HTTPS=1`
+for `tests/server/run.sh`; harness: `--proxy HOST:PORT`, `xfer-cancel-at`,
+`rss-reset`, `rss-check` (`tests/integration/harness_cmds_xfer.c`);
+`tests/integration/upload_stub.py` (CONNECT proxy that fakes the upload
+server).
 
 ## M8: migration from prpl-jabber (done)
 
@@ -477,8 +510,7 @@ Acceptance:
 - M10: stream resumption as a silent reconnect (XEP-0198 `resume`).
 - OMEMO evaluation (XEP-0384), for example through the existing lurch plugin
   or a native module.
-- Streaming HTTP upload from disk with progress (v0.1.0 reads the file into
-  memory).
+- Streaming HTTP upload from disk with progress (done, see below).
 - A GTK plugin that draws receipt and marker ticks from the `xmpp2-receipt`
   and `xmpp2-marker` signals (done, M13).
 - Later XEPs: displayed sync (0490), retraction (0424), reactions (0444),

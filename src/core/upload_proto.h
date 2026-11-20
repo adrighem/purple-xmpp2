@@ -18,9 +18,6 @@
 #define X2_NS_HTTP_UPLOAD "urn:xmpp:http:upload:0"
 #define X2_NS_OOB_X       "jabber:x:oob"
 
-/** Hard cap on the size of one upload: v1 holds the file in memory. */
-#define X2_UPLOAD_HARD_CAP ((guint64)100 * 1024 * 1024)
-
 #define X2_UPLOAD_ERROR x2_upload_error_quark()
 GQuark x2_upload_error_quark(void);
 
@@ -63,13 +60,11 @@ typedef struct {
 gboolean x2_upload_disco_parse(const xmlnode *query, guint64 *max_size);
 
 /**
- * Checks a file size against the service limit (0 = none) and the hard cap.
+ * Checks a file size against the service limit (0 = none announced).  The
+ * file is streamed from disk, so the server's max-file-size is the only cap.
  * The error message is meant for the user.
  */
 gboolean x2_upload_check_size(guint64 size, guint64 service_max, GError **error);
-
-/** Returns the limit that applies: the smaller of service_max (0 = none) and the cap. */
-guint64 x2_upload_effective_max(guint64 service_max);
 
 /** Base name of a path, valid UTF-8, no control characters. Free with g_free(). */
 char *x2_upload_filename(const char *path);

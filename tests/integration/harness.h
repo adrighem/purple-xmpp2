@@ -136,6 +136,11 @@ void cmd_leave(const char *cmd, char *arg);
 void cmd_groupsend(const char *cmd, char *arg);
 /* harness_cmds_files.c */
 void cmd_upload(const char *cmd, char *arg);    /* upload, upload-fail, upload-drop */
+/* harness_cmds_xfer.c: transfer progress, mid-transfer cancel, RSS, --proxy */
+void harness_xfer_init(const char *proxy);      /* after the account exists */
+void cmd_xfer_cancel_at(const char *cmd, char *arg);
+void cmd_rss_reset(const char *cmd, char *arg);
+void cmd_rss_check(const char *cmd, char *arg);
 /* harness_cmds_assert.c */
 void cmd_assert(const char *cmd, char *arg);    /* expect-*, no-*, count-* */
 void cmd_legacy(const char *cmd, char *arg);    /* wait, absent, count */

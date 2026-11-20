@@ -84,14 +84,13 @@ test_size_checks(void)
 	g_assert_error(err, X2_UPLOAD_ERROR, X2_UPLOAD_ERROR_SIZE);
 	g_clear_error(&err);
 
-	/* hard cap applies with no service limit and above a larger one */
+	/* no cap of ours: the file is streamed, only the server limit counts */
 	g_assert_true(x2_upload_check_size(100 * mib, 0, &err));
-	g_assert_false(x2_upload_check_size(100 * mib + 1, 0, &err));
+	g_assert_true(x2_upload_check_size(8192 * mib, 0, &err));
+	g_assert_true(x2_upload_check_size(500 * mib, 500 * mib, &err));
+	g_assert_no_error(err);
+	g_assert_false(x2_upload_check_size(500 * mib + 1, 500 * mib, &err));
 	g_clear_error(&err);
-	g_assert_false(x2_upload_check_size(100 * mib + 1, 500 * mib, &err));
-	g_clear_error(&err);
-	g_assert_cmpuint(x2_upload_effective_max(500 * mib), ==, 100 * mib);
-	g_assert_cmpuint(x2_upload_effective_max(3 * mib), ==, 3 * mib);
 }
 
 static void

@@ -5,15 +5,14 @@
  * @file upload_xfer.c XEP-0363 HTTP File Upload: the PurpleXfer
  *
  * Flow: init (size check, no network) -> slot request IQ to our server's
- * upload service -> HTTP PUT with purple_util_fetch_url_request_data_len_
- * with_account() (honours the account proxy, https through libpurple's SSL
- * plugin) -> message with the GET URL and an XEP-0066 <x/> -> xfer complete.
+ * upload service -> HTTP PUT streamed from disk by upload_put.c (account
+ * proxy, https through libpurple's SSL plugin, progress on the PurpleXfer)
+ * -> message with the GET URL and an XEP-0066 <x/> -> xfer complete.
  *
- * v1 reads the whole file into memory, bounded by max-file-size and the
- * 100 MiB hard cap (ARCHITECTURE 7.7).  Neither the slot URLs (they may
- * carry a signed token) nor the slot headers (Authorization, Cookie) are
- * ever logged here; libpurple itself logs the host and path of a fetch at
- * debug level "util".
+ * Memory use is one chunk whatever the file size; the only size limit is
+ * the server's max-file-size (ARCHITECTURE 7.7).  Neither the slot URLs
+ * (they may carry a signed token) nor the slot headers (Authorization,
+ * Cookie) are ever logged here.
  */
 #include "xmpp2_internal.h"
 
@@ -24,19 +23,17 @@
 
 #include "conversation.h"
 #include "debug.h"
-#include "util.h"
 
+#include "core/upload_http.h"
 #include "core/upload_proto.h"
 #include "ext/ext.h"
 #include "ext/upload.h"
+#include "ext/upload_put.h"
 #include "iq.h"
 #include "jutil.h"
 #include "namespaces.h"
 
 #define DBG "xmpp2-upload"
-
-/* Largest PUT response we read (status line, headers, short body) */
-#define X2_UPLOAD_RESPONSE_MAX (64 * 1024)
 
 typedef struct {
 	JabberStream *js;
@@ -46,10 +43,7 @@ typedef struct {
 	const char *mime;
 	char *iq_id;                    /* slot request in flight */
 	X2UploadSlot *slot;
-	PurpleUtilFetchUrlData *fetch;  /* PUT in flight */
-	gboolean starting;              /* inside the fetch call, see put_done() */
-	gboolean failed_early;
-	char *early_error;
+	X2UploadPut *put;               /* PUT in flight */
 } X2UploadXfer;
 
 static void
@@ -66,12 +60,10 @@ ux_free(PurpleXfer *xfer)
 		st->xfers = g_list_remove(st->xfers, xfer);
 	if (ux->iq_id != NULL)
 		jabber_iq_remove_callback_by_id(ux->js, ux->iq_id);
-	if (ux->fetch != NULL)
-		purple_util_fetch_url_cancel(ux->fetch);
+	x2_upload_put_cancel(ux->put);
 	x2_upload_slot_free(ux->slot);
 	g_free(ux->iq_id);
 	g_free(ux->filename);
-	g_free(ux->early_error);
 	g_free(ux);
 }
 
@@ -141,106 +133,75 @@ ux_finish(PurpleXfer *xfer)
 	purple_xfer_end(xfer);
 }
 
-/* Handles the outcome of the PUT; error is NULL when a response arrived. */
+/* Handles the outcome of the PUT: a status, or 0 with the error. */
 static void
-put_result(PurpleXfer *xfer, const char *response, const char *error)
+put_result(PurpleXfer *xfer, int code, const char *error)
 {
-	int code = 0;
-
-	if (error != NULL) {
+	if (code == 0) {
 		ux_failf(xfer, _("could not send the file to the server: %s"), error);
-		return;
-	}
-	if (!x2_upload_status_parse(response, &code)) {
-		ux_fail(xfer, _("the upload server sent an unreadable response"));
 		return;
 	}
 	/*
 	 * 200, 201 and 204 are success (XEP-0363 says 201, servers differ).  A
-	 * redirect is a failure and has its own message.  libpurple follows a
-	 * Location header with a GET, possibly over plain http, and we then see
-	 * the status of that GET: such a server is not supported, and one that
-	 * answers 3xx without Location is reported as a redirect.
+	 * redirect is never followed (it could lead to plain http, or to
+	 * another host with our slot headers): it fails with its own message.
 	 */
-	if (!x2_upload_put_status_ok(code)) {
-		if (code == 401 || code == 403)
-			ux_failf(xfer, _("the upload server refused the file (HTTP %d)"), code);
-		else if (code == 413)
-			ux_fail(xfer, _("the file is too large for the upload server (HTTP 413)"));
-		else if (code >= 300 && code <= 399)
-			ux_failf(xfer, _("the upload server redirected the upload "
-				"(HTTP %d), which is not supported"), code);
-		else
-			ux_failf(xfer, _("the upload server answered HTTP %d"), code);
-		return;
+	switch (x2_upload_status_class(code)) {
+	case X2_UPLOAD_STATUS_OK:
+		ux_finish(xfer);
+		break;
+	case X2_UPLOAD_STATUS_REFUSED:
+		ux_failf(xfer, _("the upload server refused the file (HTTP %d)"), code);
+		break;
+	case X2_UPLOAD_STATUS_TOO_LARGE:
+		ux_fail(xfer, _("the file is too large for the upload server (HTTP 413)"));
+		break;
+	case X2_UPLOAD_STATUS_REDIRECT:
+		ux_failf(xfer, _("the upload server redirected the upload "
+			"(HTTP %d), which is not supported"), code);
+		break;
+	default:
+		ux_failf(xfer, _("the upload server answered HTTP %d"), code);
+		break;
 	}
-	ux_finish(xfer);
 }
 
 static void
-put_done(PurpleUtilFetchUrlData *url_data, gpointer data, const gchar *text,
-         gsize len, const gchar *error_message)
+put_done(gpointer data, int status, const char *error)
 {
 	PurpleXfer *xfer = data;
 	X2UploadXfer *ux = xfer->data;
 
-	if (ux->starting) {
-		/*
-		 * libpurple reported a failure from inside the fetch call, before
-		 * it returned: handle it once ux->fetch is settled.
-		 */
-		ux->failed_early = TRUE;
-		ux->early_error = g_strdup(error_message ? error_message :
-			"the connection failed");
-		return;
-	}
-	ux->fetch = NULL;
-	put_result(xfer, text, error_message);
+	ux->put = NULL;  /* gone: it freed itself before calling us */
+	put_result(xfer, status, error);
 }
 
 /*
- * Reads head and file into one buffer (*out, *out_len): one copy of the file
- * in memory until the fetch call copies it.
+ * The PUT is connected (sent == 0) or has written more of the body: move
+ * the PurpleXfer along, so the transfer dialog shows the progress.
  */
-static gboolean
-build_request(PurpleXfer *xfer, char **out, gsize *out_len, GError **error)
+static void
+put_progress(gpointer data, guint64 sent)
 {
-	X2UploadXfer *ux = xfer->data;
-	guint64 size = purple_xfer_get_size(xfer);
-	char *head = x2_upload_put_head(ux->slot, size, ux->mime,
-		"purple-xmpp2/" XMPP2_VERSION);
-	gsize hlen = strlen(head);
-	FILE *fp;
-	char *buf;
+	PurpleXfer *xfer = data;
 
-	buf = g_try_malloc(hlen + size);
-	if (buf == NULL) {
-		g_set_error_literal(error, X2_UPLOAD_ERROR, X2_UPLOAD_ERROR_SIZE,
-			"not enough memory to read the file");
-		g_free(head);
-		return FALSE;
-	}
-	memcpy(buf, head, hlen);
-	g_free(head);
+	if (purple_xfer_get_status(xfer) != PURPLE_XFER_STATUS_STARTED) {
+		gboolean gone;
 
-	fp = g_fopen(purple_xfer_get_local_filename(xfer), "rb");
-	if (fp == NULL) {
-		g_set_error(error, X2_UPLOAD_ERROR, X2_UPLOAD_ERROR_SIZE,
-			"cannot read the file: %s", g_strerror(errno));
-		g_free(buf);
-		return FALSE;
+		/*
+		 * No descriptor of ours for libpurple (-1): this only marks the
+		 * transfer as started (start time, status).  It cancels the xfer
+		 * if it cannot open the file, hence the extra reference.
+		 */
+		purple_xfer_ref(xfer);
+		purple_xfer_start(xfer, -1, NULL, 0);
+		gone = purple_xfer_is_canceled(xfer);
+		purple_xfer_unref(xfer);
+		if (gone)
+			return;
 	}
-	if (fread(buf + hlen, 1, size, fp) != size) {
-		g_set_error_literal(error, X2_UPLOAD_ERROR, X2_UPLOAD_ERROR_SIZE,
-			"the file changed while it was read");
-		fclose(fp);
-		g_free(buf);
-		return FALSE;
-	}
-	fclose(fp);
-	*out = buf;
-	*out_len = hlen + size;
-	return TRUE;
+	purple_xfer_set_bytes_sent(xfer, sent);
+	purple_xfer_update_progress(xfer);
 }
 
 static void
@@ -248,36 +209,16 @@ start_put(PurpleXfer *xfer)
 {
 	X2UploadXfer *ux = xfer->data;
 	GError *err = NULL;
-	char *request;
-	gsize request_len;
 
-	if (!build_request(xfer, &request, &request_len, &err)) {
-		ux_fail(xfer, err->message);
-		g_clear_error(&err);
-		return;
-	}
 	purple_debug_info(DBG, "PUT %" G_GUINT64_FORMAT " bytes to %s (%s)\n",
 		(guint64)purple_xfer_get_size(xfer), ux->slot->put_url.host,
 		ux->slot->put_url.https ? "https" : "http");
-
-	/*
-	 * max_len bounds the response.  It must be > 0: with -1 libpurple logs
-	 * the full (signed) PUT URL at error level.  libpurple copies the
-	 * request, so ours goes at once (halves peak memory).
-	 */
-	ux->starting = TRUE;
-	ux->fetch = purple_util_fetch_url_request_data_len_with_account(
-		purple_xfer_get_account(xfer), ux->slot->put, TRUE,
-		"purple-xmpp2/" XMPP2_VERSION, TRUE, request, request_len,
-		TRUE, X2_UPLOAD_RESPONSE_MAX, put_done, xfer);
-	ux->starting = FALSE;
-	g_free(request);
-
-	if (ux->failed_early) {
-		ux->fetch = NULL;
-		put_result(xfer, NULL, ux->early_error);
-	} else if (ux->fetch == NULL) {
-		ux_fail(xfer, _("could not start the upload connection"));
+	ux->put = x2_upload_put_start(purple_xfer_get_account(xfer), ux->slot,
+		purple_xfer_get_local_filename(xfer), purple_xfer_get_size(xfer),
+		ux->mime, put_progress, put_done, xfer, &err);
+	if (ux->put == NULL) {
+		ux_fail(xfer, err->message);
+		g_clear_error(&err);
 	}
 }
 

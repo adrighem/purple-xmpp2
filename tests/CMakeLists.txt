@@ -23,6 +23,7 @@ add_executable(xmpp2-harness
     integration/harness_cmds_msg.c
     integration/harness_cmds_rooms.c
     integration/harness_cmds_files.c
+    integration/harness_cmds_xfer.c
     integration/harness_cmds_assert.c)
 target_link_libraries(xmpp2-harness PRIVATE PkgConfig::PURPLE PkgConfig::GLIB_T)
 target_compile_options(xmpp2-harness PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -65,6 +66,7 @@ set_tests_properties(integration-selftest PROPERTIES
 # Feature integration tests: one test_<name>.sh per entry.
 foreach(feature_test carbons carbons_off correct mam mam_bulk mam_muc
         mam_muc_bulk mam_muc_legacy mam_recovery sm upload upload_fallback
+        upload_stream upload_errors upload_https
         receipts markers migrate)
     add_test(NAME integration-${feature_test}
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh

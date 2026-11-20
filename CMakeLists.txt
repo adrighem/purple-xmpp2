@@ -65,6 +65,7 @@ set(XMPP2_SOURCES
     src/ext/msgctx.c
     src/ext/statefile.c
     src/ext/upload.c
+    src/ext/upload_put.c
     src/ext/upload_xfer.c
     src/ext/peerutil.c
     src/ext/receipts.c
@@ -109,6 +110,7 @@ add_library(x2core STATIC
     src/core/sid.c
     src/core/smstate.c
     src/core/store.c
+    src/core/upload_http.c
     src/core/upload_proto.c)
 set_target_properties(x2core PROPERTIES
     POSITION_INDEPENDENT_CODE ON

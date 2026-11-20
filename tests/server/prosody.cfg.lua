@@ -50,6 +50,19 @@ http_interfaces = { "*" }
 https_ports = { }
 http_external_url = "http://localhost:" .. (Lua.os.getenv("XMPP2_HTTP_PORT") or "15280") .. "/"
 
+-- XMPP2_HTTPS_PORT (run.sh XMPP2_UPLOAD_HTTPS=1): upload URLs are https, served
+-- with the test certificate, so the https upload path can be exercised.
+local https_port = Lua.os.getenv("XMPP2_HTTPS_PORT")
+if https_port then
+	https_ports = { 5281 }
+	https_interfaces = { "*" }
+	https_ssl = {
+		certificate = "/etc/prosody/certs/localhost.crt";
+		key = "/etc/prosody/certs/localhost.key";
+	}
+	http_external_url = "https://localhost:" .. https_port .. "/"
+end
+
 VirtualHost "localhost"
 
 Component "conference.localhost" "muc"
@@ -61,7 +74,8 @@ Component "conference.localhost" "muc"
 
 if not disabled.upload then
 Component "upload.localhost" "http_file_share"
-	http_file_share_size_limit = 10485760
+	-- XMPP2_UPLOAD_LIMIT (bytes) raises the limit for the streaming tests
+	http_file_share_size_limit = tonumber(Lua.os.getenv("XMPP2_UPLOAD_LIMIT") or "") or 10485760
 	http_file_share_expires_after = "1w"
 	http_host = "localhost"
 end

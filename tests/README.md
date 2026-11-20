@@ -20,7 +20,10 @@ is 100 (matches the PLAN page size).
 Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 `conference.localhost`, upload `upload.localhost`. Users `alice`, `bob`,
 `carol`, password `secret`. Override with `XMPP2_TEST_C2S_PORT`,
-`XMPP2_TEST_HTTP_PORT`, `XMPP2_TEST_PASSWORD`.
+`XMPP2_TEST_HTTP_PORT`, `XMPP2_TEST_PASSWORD`. Upload tests also use
+`XMPP2_UPLOAD_LIMIT=BYTES` (max-file-size, default 10 MiB) and
+`XMPP2_UPLOAD_HTTPS=1` (upload URLs are https on `XMPP2_TEST_HTTPS_PORT`,
+default HTTP port + 1).
 
 ## 2. Integration (`tests/integration/`)
 
@@ -76,6 +79,14 @@ Ports (loopback only): c2s `15222`, HTTP `15280`. Domain `localhost`, MUC
 - `test_upload.sh` (XEP-0363: contact, room, size limit, http opt-in) and
   `test_upload_fallback.sh` (profile `noupload`, SI fallback). The test
   server serves plain http, so they set `--pref b:allow_plain_http_upload=1`.
+  The streaming upload has three more: `test_upload_stream.sh` (50 MiB sparse
+  file, byte for byte, progress, peak RSS via `rss-reset`/`rss-check`),
+  `test_upload_errors.sh` (500, redirect, early 413, backpressure, cancel,
+  sign-off and account removal mid-upload, through `upload_stub.py`, a CONNECT
+  proxy that fakes the upload server; the harness takes `--proxy HOST:PORT`)
+  and `test_upload_https.sh` (Prosody with https upload URLs). The harness
+  prints `EV xfer-progress` lines and `xfer-cancel-at BYTES [cancel|
+  disconnect|remove]` acts mid-transfer (`tests/integration/harness_cmds_xfer.c`).
 - `test_correct.sh` covers XEP-0308 (incoming marker, forged ids, rooms,
   `/correct`, caps, offline delivery).
 - `test_migrate.sh` (M8): seeds prpl-jabber accounts and a buddy list in the
