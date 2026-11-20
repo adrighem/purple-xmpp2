@@ -82,6 +82,7 @@ set(XMPP2_SOURCES
     src/presence.c
     src/roster.c
     src/si.c
+    src/sm_resume.c
     src/stream_management.c
     src/useravatar.c
     src/usermood.c

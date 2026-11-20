@@ -421,7 +421,15 @@ Acceptance:
   exactly once (with MAM), and no stale IQ or presence is resent.
 - `<failed h='N'>` trims exactly N stanzas (debug log).
 
-## M10: silent reconnect with resumption (deferred to v0.2)
+## M10: silent reconnect with resumption (done, v0.2)
+
+Design and limits: ARCHITECTURE 7.8.  Tests: `unit-smresume`,
+`unit-smstate` (resumed h, wrap, incomplete queue) and
+`integration-sm_resume` (drop and resume with a room, gap messages once
+each way, no bind, no MAM catch-up, no carbons enable; deliberate sign-off
+ends the server session; a session the server forgot gives `<failed/>`, the
+usual connection error and MAM fills the gap). `integration-sm` keeps the
+v0.1.0 path with the account option `sm_resume` off.
 
 Acceptance:
 - Drop the TCP connection for 5 s while connected: the account never shows
@@ -507,7 +515,7 @@ Acceptance:
 
 ## v0.2 backlog
 
-- M10: stream resumption as a silent reconnect (XEP-0198 `resume`).
+- M10: stream resumption as a silent reconnect (XEP-0198 `resume`), done.
 - OMEMO evaluation (XEP-0384), for example through the existing lurch plugin
   or a native module.
 - Streaming HTTP upload from disk with progress (done, see below).

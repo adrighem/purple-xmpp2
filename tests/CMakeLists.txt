@@ -65,8 +65,8 @@ set_tests_properties(integration-selftest PROPERTIES
 
 # Feature integration tests: one test_<name>.sh per entry.
 foreach(feature_test carbons carbons_off correct mam mam_bulk mam_muc
-        mam_muc_bulk mam_muc_legacy mam_recovery sm upload upload_fallback
-        upload_stream upload_errors upload_https
+        mam_muc_bulk mam_muc_legacy mam_recovery sm sm_resume upload
+        upload_fallback upload_stream upload_errors upload_https
         receipts markers migrate)
     add_test(NAME integration-${feature_test}
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/run_if_podman.sh

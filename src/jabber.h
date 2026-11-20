@@ -254,6 +254,15 @@ struct _JabberStream
 
 	/* XEP-0198 negotiation state; counters and queue: stream_management.c */
 	JabberStreamManagementState sm_state;
+
+	/* XEP-0198 resumption in progress (sm_resume.c), NULL otherwise.
+	 * While set, the PurpleConnection stays connected, stanzas are held
+	 * in the SM queue and the transport is rebuilt underneath. */
+	struct _JabberSmResume *sm_resume;
+	/* The socket failed; nothing more is written until it is replaced */
+	gboolean transport_down;
+	/* Pending TCP connect of the login (cancelled on teardown) */
+	PurpleProxyConnectData *connect_data;
 };
 
 typedef gboolean (JabberFeatureEnabled)(JabberStream *js, const gchar *namespace);
@@ -296,6 +305,23 @@ void jabber_send_signal_cb(PurpleConnection *pc, xmlnode **packet,
                            gpointer unused);
 
 void jabber_stream_set_state(JabberStream *js, JabberStreamState state);
+
+/* Connects the transport (SRV, TCP, old SSL); the stream follows. */
+void jabber_stream_connect(JabberStream *js);
+
+/*
+ * The transport failed (socket error, closed, ping timeout).  Tries a
+ * silent XEP-0198 resumption, else raises a network connection error with
+ * @a msg.  Never for a deliberate close.
+ */
+void jabber_stream_lost(JabberStream *js, const char *msg);
+
+/*
+ * Drops the transport (socket, TLS, parser, write buffer, auth state,
+ * transport timers) but keeps the session: roster, buddies, chats and IQ
+ * callbacks stay.  Used between resumption attempts.
+ */
+void jabber_transport_close(JabberStream *js);
 
 void jabber_register_parse(JabberStream *js, const char *from,
                            JabberIqType type, const char *id, xmlnode *query);

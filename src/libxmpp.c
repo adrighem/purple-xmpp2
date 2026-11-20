@@ -327,6 +327,12 @@ init_plugin(PurplePlugin *plugin)
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 		option);
 
+	/* XEP-0198: reconnect silently after a network drop (sm_resume.c) */
+	option = purple_account_option_bool_new(
+		_("Resume the session after a network drop"), "sm_resume", TRUE);
+	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
+		option);
+
 	x2_ext_account_options(&prpl_info.protocol_options);
 
 	my_protocol = plugin;

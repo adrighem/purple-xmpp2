@@ -22,20 +22,22 @@
  */
 
 /*
- * XEP-0198 stream management, v1 (M9, see docs/ARCHITECTURE.md 7.8).
+ * XEP-0198 stream management (M9, M10; see docs/ARCHITECTURE.md 7.8).
  *
- * State lives per PurpleAccount in sm_sessions (not in the JabberStream),
- * so M10 can keep it across a transport reconnect for <resume/>.  The
- * counters and the bounded unacked queue are core/smstate.c.
+ * State lives per PurpleAccount in sm_sessions (not in the JabberStream).
+ * The counters and the bounded unacked queue are core/smstate.c; the
+ * silent reconnect for <resume/> is sm_resume.c.
  *
- * - Every <enable/> starts from zero: the queue of an earlier session is
- *   never resent (no resumption yet).
+ * - <enable resume='true'/> unless the account option "sm_resume" is off.
+ *   Every <enable/> starts from zero: the queue of an earlier session is
+ *   never resent on a fresh session, only after <resumed/>.
+ * - Every outbound stanza is copied into the queue (a resume resends all
+ *   of them); only <message> stanzas with a body are ever reported.
  * - <r/> is batched: after SM_REQUEST_EVERY stanzas, or SM_REQUEST_IDLE_MS
- *   after the last stanza.  A server <r/> is answered at once.
+ *   after the last stanza.  A server <r/> is answered at once.  Neither
+ *   goes out while a resumption is reconnecting.
  * - On a connection error or sign-off, unacked <message> stanzas with a
  *   body are shown in their conversation as "may not have been delivered".
- *   Only those are copied into the queue; other stanzas queue NULL.
- * - <enable/> without resume='true' until M10 implements <resume/>.
  * - Raw XML (XML console) is parsed and counted, see
  *   jabber_sm_outbound_raw().
  */
@@ -52,6 +54,7 @@
 #include "conversation.h"
 #include "signals.h"
 #include "stream_management.h"
+#include "sm_resume.h"
 #include "smstate.h"
 
 #define SM_DBG "xmpp2-sm"
@@ -62,7 +65,7 @@
 typedef struct {
 	X2SmState *st;
 	guint request_timer;
-	/* From <enabled/>; unused until M10 implements <resume/>. */
+	/* From <enabled/>, for <resume previd/> (sm_resume.c) */
 	char *resume_id;
 	char *resume_location;
 	guint resume_max;
@@ -118,6 +121,9 @@ sm_send_request(JabberStream *js, SmSession *s)
 		purple_timeout_remove(s->request_timer);
 		s->request_timer = 0;
 	}
+	/* Reconnecting: the request goes out after <resumed/>. */
+	if (js->sm_resume != NULL)
+		return;
 	x2_sm_state_requested(s->st);
 	purple_debug_info(SM_DBG, "request ack: sent=%u acked=%u\n",
 	                  x2_sm_state_outbound(s->st),
@@ -139,7 +145,7 @@ sm_request_idle_cb(gpointer data)
 	if (s == NULL)
 		return FALSE;
 	s->request_timer = 0;
-	if (js != NULL && js->sm_state == SM_ENABLED
+	if (js != NULL && js->sm_state == SM_ENABLED && js->sm_resume == NULL
 	    && x2_sm_state_need_request(s->st, 1))
 		sm_send_request(js, s);
 	return FALSE;
@@ -405,6 +411,10 @@ jabber_sm_process_packet(JabberStream *js, xmlnode *packet)
 	}
 	if (purple_strequal(name, "enabled"))
 		sm_handle_enabled(js, s, packet);
+	else if (purple_strequal(name, "resumed") && js->sm_resume != NULL)
+		jabber_sm_resume_resumed(js, packet);
+	else if (purple_strequal(name, "failed") && js->sm_resume != NULL)
+		jabber_sm_resume_failed(js, packet);
 	else if (purple_strequal(name, "failed"))
 		sm_handle_failed(js, s, packet);
 	else if (purple_strequal(name, "r"))
@@ -423,7 +433,7 @@ jabber_sm_ack_send(JabberStream *js)
 	xmlnode *ack;
 	char *h;
 
-	if (js->sm_state != SM_ENABLED || s == NULL)
+	if (js->sm_state != SM_ENABLED || s == NULL || js->sm_resume != NULL)
 		return;
 	h = g_strdup_printf("%u", x2_sm_state_inbound(s->st));
 	ack = xmlnode_new("a");
@@ -439,6 +449,8 @@ void
 jabber_sm_enable(JabberStream *js)
 {
 	SmSession *s = sm_session_get(js);
+	gboolean resume = purple_account_get_bool(
+		purple_connection_get_account(js->gc), "sm_resume", TRUE);
 	xmlnode *enable;
 	guint stale;
 
@@ -447,13 +459,16 @@ jabber_sm_enable(JabberStream *js)
 	/* A new session never resends the queue of an earlier one: the server
 	 * may have handled those stanzas already (ARCHITECTURE 7.8). */
 	stale = x2_sm_state_reset(s->st, 0, 0);
-	/* No resume='true' until M10 implements <resume/>: the server must
-	 * not keep a session around that we never resume. */
-	purple_debug_info(SM_DBG, "enable requested (no resume), fresh "
+	g_free(s->resume_id);
+	s->resume_id = NULL;
+	s->resumable = FALSE;
+	purple_debug_info(SM_DBG, "enable requested (%s), fresh "
 	                  "session, %u stale stanzas dropped, nothing resent\n",
-	                  stale);
+	                  resume ? "resume" : "no resume", stale);
 	enable = xmlnode_new("enable");
 	xmlnode_set_namespace(enable, NS_STREAM_MANAGEMENT);
+	if (resume)
+		xmlnode_set_attrib(enable, "resume", "true");
 	jabber_send(js, enable);
 	xmlnode_free(enable);
 	js->sm_state = SM_REQUESTED;
@@ -470,10 +485,9 @@ jabber_sm_outbound(JabberStream *js, xmlnode *packet)
 		return;
 	s = sm_session_lookup(js);
 	g_return_if_fail(s != NULL);
-	/* Counted from <enable/> on: the server counts from there too.  Only
-	 * a message with a body is ever reported, so only that is copied. */
-	x2_sm_state_sent(s->st, sm_is_reportable(packet)
-	                        ? xmlnode_copy(packet) : NULL);
+	/* Counted from <enable/> on: the server counts from there too.  All
+	 * are copied: a resumption sends every unacked stanza again. */
+	x2_sm_state_sent(s->st, xmlnode_copy(packet));
 	if (js->sm_state != SM_ENABLED)
 		return;
 	if (x2_sm_state_need_request(s->st, SM_REQUEST_EVERY))
@@ -519,4 +533,41 @@ jabber_sm_inbound(JabberStream *js, xmlnode *packet)
 	s = sm_session_lookup(js);
 	if (s != NULL)
 		x2_sm_state_received(s->st);
+}
+
+gboolean
+jabber_sm_resumable(JabberStream *js, guint *max)
+{
+	SmSession *s = sm_session_lookup(js);
+
+	if (s == NULL || js->sm_state != SM_ENABLED || !s->resumable
+	    || s->resume_id == NULL)
+		return FALSE;
+	*max = s->resume_max;
+	return TRUE;
+}
+
+X2SmState *
+jabber_sm_get_state(JabberStream *js)
+{
+	SmSession *s = sm_session_lookup(js);
+
+	return s ? s->st : NULL;
+}
+
+const char *
+jabber_sm_get_resume_id(JabberStream *js)
+{
+	SmSession *s = sm_session_lookup(js);
+
+	return s ? s->resume_id : NULL;
+}
+
+void
+jabber_sm_request_ack(JabberStream *js)
+{
+	SmSession *s = sm_session_lookup(js);
+
+	if (s != NULL && js->sm_state == SM_ENABLED)
+		sm_send_request(js, s);
 }
