@@ -66,8 +66,11 @@ jobs:
         run: |
           mkdir -p dist
           version="$(tr -d '[:space:]' < version.txt)"
-          for f in ../purple-xmpp2_*.deb; do
-            cp "$f" "dist/purple-xmpp2_${version}_${{ matrix.name }}_amd64.deb"
+          for pkg in purple-xmpp2 pidgin-xmpp2-ticks; do
+            for f in ../"${pkg}"_*.deb; do
+              test -f "$f"
+              cp "$f" "dist/${pkg}_${version}_${{ matrix.name }}_amd64.deb"
+            done
           done
           ls -l dist
 
@@ -112,6 +115,7 @@ jobs:
             packaging/rpm/purple-xmpp2.spec
           mkdir -p dist
           cp "$top"/RPMS/*/purple-xmpp2-*.rpm dist/
+          cp "$top"/RPMS/*/pidgin-xmpp2-ticks-*.rpm dist/
           rm -f dist/*debuginfo* dist/*debugsource*
           ls -l dist
 
