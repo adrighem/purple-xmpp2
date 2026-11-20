@@ -75,8 +75,9 @@ transfer proxies, custom smileys), the Advanced tab has:
   chats.
 - A corrected message appears as a new line, not an in-place edit.
 - File upload needs a server with XEP-0363 over `https` (or the opt-in above).
-  The whole file is read into memory, there is no progress bar, and the server's
-  size limit is checked before sending.
+  The file is streamed from disk with progress in the transfer window; the
+  server's size limit is checked before sending. An upload that stalls has no
+  timeout, cancel it in the transfer window.
 - No OMEMO or other end-to-end encryption, no message retraction, reactions, or
   replies yet.
 - Dropped from the fork: Google Talk extensions, Jingle (voice and video), BOSH,

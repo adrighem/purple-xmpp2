@@ -621,9 +621,10 @@ earlier message the command fails with a message. Advertises
 
 ### 7.7 HTTP File Upload (XEP-0363)
 
-Implemented in `core/upload_proto.c` (pure logic, unit tested),
-`ext/upload.c` (discovery, prpl entry points) and `ext/upload_xfer.c` (the
-`PurpleXfer`).
+Implemented in `core/upload_proto.c` and `core/upload_http.c` (pure logic,
+unit tested), `ext/upload.c` (discovery, prpl entry points),
+`ext/upload_xfer.c` (the `PurpleXfer`, slot request, result handling) and
+`ext/upload_put.c` (the streaming HTTP PUT client).
 
 Discovery: in `server_info`, a JID that is our server domain or an item of
 our own server's `disco#items` (never our own bare JID, foreign upload
@@ -633,9 +634,10 @@ services are never offered) advertising `urn:xmpp:http:upload:0`, with
 `send_file`, `new_xfer` and `chat_send_file` (rooms) create a `PurpleXfer`
 (type SEND) with our own ops when a service exists, else they fall back to
 the inherited SI transfer (`can_receive_file` is TRUE whenever a service
-exists: the URL reaches anybody). On init the size is checked against the
-smaller of `max-file-size` and the hard 100 MiB cap, before any network
-request, and an empty file is refused. Then:
+exists: the URL reaches anybody). On init the size is checked against
+`max-file-size`, before any network request, and an empty file is refused.
+There is no limit of our own: the file is streamed, so the server's
+`max-file-size` (none announced = none) is the only cap. Then:
 
 1. IQ get `<request filename size content-type/>` to the service (content
    type from a small extension table, else `application/octet-stream`). The
@@ -648,37 +650,65 @@ request, and an empty file is refused. Then:
    no user info, no IPv6 literal, no spaces or control characters, and must
    be https unless the account option `allow_plain_http_upload` ("Allow
    unencrypted file upload", default off) is set.
-3. `PUT` through `purple_util_fetch_url_request_data_len_with_account()` with
-   a hand-built binary-safe request (`Host`, `User-Agent`, `Content-Type`,
-   `Content-Length`, slot headers, `Connection: close`): honours the account
-   proxy, https through the purple SSL plugin (default port 443, checked),
-   `include_headers=TRUE` to read the status line, `max_len` 64 KiB for the
-   response. 200, 201 and 204 are success (`x2_upload_put_status_ok()`:
-   XEP-0363 says 201, some servers differ); a 3xx fails with its own
-   "redirected" message and anything else fails with the code. libpurple
-   follows any `Location` header with a GET (possibly over plain http) and we
-   would see the status of that GET, so a server that redirects the PUT is
-   not supported.
+3. `PUT`, streamed from disk by `ext/upload_put.c`, a minimal HTTP/1.1
+   client of our own (libpurple's fetch API can only send a request that is
+   one buffer in memory). The head is built by `x2_upload_put_head()`
+   (`Host`, `User-Agent`, `Content-Type`, `Content-Length`, the allowed slot
+   headers, `Connection: close`; no `Expect`, no chunked encoding). The
+   connection is `purple_proxy_connect()` for `http` (so the account proxy
+   applies) or `purple_ssl_connect()` for `https`: libpurple's SSL plugin and
+   its certificate verification (the `x509_tls_cached` verifier, the same as
+   for the XMPP stream), with the URL host as server name (SNI) and
+   verification name, port from the URL (default 443/80). One watcher
+   (`purple_input_add()` on the socket, `READ | WRITE` while writing, `READ`
+   afterwards) drives everything. Per main loop turn at most 256 KiB are
+   written: first the head, then chunks of 64 KiB read from the file with
+   `fread()` into one buffer. A write that returns EAGAIN keeps the buffer and
+   offers the same bytes again on the next turn (GnuTLS requires that), so a
+   slow server slows the read and memory stays one chunk (plus the stdio
+   buffer) whatever the file size. `READ` is watched during the write so an
+   early answer (413, 401) is seen at once; when the socket refuses our data
+   (EPIPE, reset) the response is still read before the failure is reported.
+   The status line is read by `x2_upload_resp_feed()` (interim 1xx
+   responses are skipped, the rest of the response is ignored). 200, 201 and
+   204 are success (`x2_upload_put_status_ok()`: XEP-0363 says 201, some
+   servers differ). A 3xx is never followed (it could lead to plain http or
+   to another host, with our slot headers) and fails with its own "redirected"
+   message; 401 and 403, 413 and any other status have their own messages. A
+   file that shrinks while it is read fails the upload ("the file changed").
+   The logic that can be tested without sockets is in `core/upload_http.c`:
+   the accounting of head, body and sent bytes (`X2UploadSend`), the progress
+   steps and the response parser. Not done: a timeout for a connection that stalls (the user can cancel in
+   the transfer window), and `Expect: 100-continue`.
 4. Send `<message type='chat|groupchat'>` with the GET URL as body plus
    `<x xmlns='jabber:x:oob'><url/></x>` through the normal outbound path
    (`x2_msg_prepare_outgoing`: origin-id, hooks), echo it locally for 1:1
    (a room reflects it), complete the xfer.
 
+Progress: when the connection is up the `PurpleXfer` is started with
+`purple_xfer_start(xfer, -1, NULL, 0)` (no descriptor for libpurple: it only
+sets status and start time, which the transfer window uses for its rate and
+"waiting" text), then `purple_xfer_set_bytes_sent()` and
+`purple_xfer_update_progress()` after every percent of the file (at least
+every 64 KiB, and at the end), counting bytes accepted by the socket. The
+transfer window's Cancel button runs `purple_xfer_cancel_local()`, which frees
+the upload (`cancel_send`): watcher removed, socket (or SSL connection)
+closed, file closed; a callback from inside the PUT's own progress call is
+safe (the PUT is freed when the callback returns).
+
 Errors reach the user through `purple_xfer_error()` ("File upload of X
 failed: reason") and cancel the transfer; the same text is logged under
 `xmpp2-upload`. Logging: never the slot URLs (signed tokens) or headers; the
-only URL data in our log is the PUT host and scheme. `max_len` must be
-positive: with -1 libpurple logs the full signed PUT URL at error level
-("Defaulting max download from URL"). libpurple still logs the URL and the
-request head under `util` when unsafe debugging is on (and the target of a
-redirect, which then fails), which we cannot suppress with this API.
+only URL data in our log is the PUT host and scheme. Our own client logs no
+URL at all (libpurple's fetch code logged the request head and, with an
+unbounded response, the full URL; it is no longer used). The XML console of
+the stream still shows the slot IQ, as for any stanza.
 
-Memory: v1 reads the file into one buffer (request head plus body), bounded
-by `max-file-size` and the 100 MiB cap. libpurple copies the request, and
-our buffer is freed as soon as the fetch call returns, so peak use is about
-twice the file size for that moment only, once the file size afterwards.
-The transfer is blocking only for the file read; the PUT is asynchronous.
-Streaming from disk and progress are later. In-flight uploads live in the
+Memory: one 64 KiB buffer, the request head and the 16 KiB response window,
+independent of the file size (the integration tests upload 50 MiB with a peak
+RSS growth below 16 MiB, in practice a few hundred kB). The file is read with
+blocking `fread()` calls of one chunk each, so a file on a stalled network
+file system blocks the UI for that read. In-flight uploads live in the
 module's per-stream state (not in `js->file_transfers`, whose entries the SI
 code casts to its own struct) and are cancelled in the `stream_closing`
 hook, while `js->iq_callbacks` still exists (a slot IQ callback is removed
